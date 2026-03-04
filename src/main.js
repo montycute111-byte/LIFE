@@ -211,6 +211,9 @@ function describeActionResult(result) {
   if (result.order?.itemName) {
     return "Ordered!";
   }
+  if (result.purchasedItemName) {
+    return `${result.purchasedItemName} purchased.`;
+  }
   if (result.item?.name) {
     return `${result.item.name} activated.`;
   }
