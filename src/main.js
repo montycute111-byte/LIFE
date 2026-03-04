@@ -249,7 +249,10 @@ function applyTimedUpdates() {
     return;
   }
   const updates = refreshTimedState(viewModel.state);
-  applyPassiveIncomeTick(viewModel.state);
+  const passive = applyPassiveIncomeTick(viewModel.state);
+  if (Number(passive?.earned || 0) > 0) {
+    viewModel.notice = `Passive income: +$${Math.round(passive.earned).toLocaleString()}.`;
+  }
   if (Number(updates?.deliveredCount || 0) > 0) {
     viewModel.notice = "Delivered!";
   }
