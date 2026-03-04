@@ -406,8 +406,8 @@ export function upgradeBusiness(state, businessId) {
 }
 
 export function applyPassiveIncomeTick(state, now = Date.now()) {
-  const businesses = ensureBusinessesState(state, now);
-  const lastTick = Number(businesses.lastPassiveTickAt || now);
+  ensureBusinessesState(state, now);
+  const lastTick = Number(state.businesses.lastPassiveTickAt || now);
   const intervalSeconds = getPassiveIntervalSeconds(state);
   const intervalMs = intervalSeconds * 1000;
   const elapsedMs = Math.max(0, now - lastTick);
@@ -431,7 +431,7 @@ export function applyPassiveIncomeTick(state, now = Date.now()) {
   if (earned > 0) {
     state.money += earned;
   }
-  businesses.lastPassiveTickAt = now;
+  state.businesses.lastPassiveTickAt = now;
 
   return {
     earned,
@@ -442,8 +442,8 @@ export function applyPassiveIncomeTick(state, now = Date.now()) {
 }
 
 export function grantOfflineEarnings(state, now = Date.now()) {
-  const businesses = ensureBusinessesState(state, now);
-  const lastTick = Number(businesses.lastPassiveTickAt || now);
+  ensureBusinessesState(state, now);
+  const lastTick = Number(state.businesses.lastPassiveTickAt || now);
   const elapsedSeconds = Math.max(0, Math.floor((now - lastTick) / 1000));
   const clampedSeconds = Math.min(elapsedSeconds, OFFLINE_CAP_SECONDS);
   const intervalSeconds = getPassiveIntervalSeconds(state);
@@ -459,7 +459,7 @@ export function grantOfflineEarnings(state, now = Date.now()) {
   if (earned > 0) {
     state.money += earned;
   }
-  businesses.lastPassiveTickAt = now;
+  state.businesses.lastPassiveTickAt = now;
 
   return {
     earned,
