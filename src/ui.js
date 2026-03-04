@@ -18,7 +18,7 @@ import {
   getResidenceState,
   getResidenceUpgradeCost
 } from "./realEstate.js";
-import { ABILITY_DURATION_MS, STORE_ITEMS, getActiveAbility, getOrderStatus, getPlayerEffects } from "./store.js";
+import { ABILITY_DURATION_MS, STORE_ITEMS, getActiveAbility, getOrderStatus, getPlayerEffects, getStoreItemPrice } from "./store.js";
 
 export function renderApp(root, viewModel, handlers) {
   if (!root) {
@@ -206,17 +206,20 @@ function renderStoreTab(state) {
         <h2>Store</h2>
         <p class="hint">Buy items to place delivery orders. Abilities do not activate on purchase.</p>
         <div class="list">
-          ${STORE_ITEMS.map((item) => `
-            <div class="item-row">
-              <div class="row-head">
-                <strong>${escapeHtml(item.name)}</strong>
-                <span class="rarity-pill rare">$${formatNumber(item.price)}</span>
+          ${STORE_ITEMS.map((item) => {
+            const livePrice = getStoreItemPrice(state, item.id);
+            return `
+              <div class="item-row">
+                <div class="row-head">
+                  <strong>${escapeHtml(item.name)}</strong>
+                  <span class="rarity-pill rare">$${formatNumber(livePrice)}</span>
+                </div>
+                <div class="row-meta">${escapeHtml(item.description)}</div>
+                <div class="row-meta">Ability: ${escapeHtml(item.ability)} ${item.abilityDuration ? `for ${escapeHtml(item.abilityDuration)}` : ""}</div>
+                <button class="btn secondary" data-action="buy-store-item" data-id="${item.id}" ${state.money < livePrice ? "disabled" : ""}>Buy Item</button>
               </div>
-              <div class="row-meta">${escapeHtml(item.description)}</div>
-              <div class="row-meta">Ability: ${escapeHtml(item.ability)} for ${escapeHtml(item.abilityDuration)}</div>
-              <button class="btn secondary" data-action="buy-store-item" data-id="${item.id}" ${state.money < item.price ? "disabled" : ""}>Buy Item</button>
-            </div>
-          `).join("")}
+            `;
+          }).join("")}
         </div>
       </article>
 
