@@ -417,7 +417,7 @@ export function applyPassiveIncomeTick(state, now = Date.now()) {
   if (earned > 0) {
     state.money += earned;
   }
-  businesses.lastPassiveTickAt = lastTick + (cycles * intervalMs);
+  businesses.lastPassiveTickAt = now;
 
   return {
     earned,
@@ -441,8 +441,7 @@ export function grantOfflineEarnings(state, now = Date.now()) {
   if (earned > 0) {
     state.money += earned;
   }
-  const clampedWindowStartMs = now - (clampedSeconds * 1000);
-  businesses.lastPassiveTickAt = clampedWindowStartMs + (consumedSeconds * 1000);
+  businesses.lastPassiveTickAt = now;
 
   return {
     earned,
