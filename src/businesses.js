@@ -289,6 +289,16 @@ export function getPassiveCycleProgress(state, now = Date.now()) {
   };
 }
 
+export function getTotalPassivePayoutPerCycle(state) {
+  const totalPerSec = getTotalPassivePerSec(state);
+  const intervalSeconds = getPassiveIntervalSeconds(state);
+  const rawPayout = totalPerSec * intervalSeconds;
+  if (totalPerSec <= 0) {
+    return 0;
+  }
+  return Math.max(1, Math.round(rawPayout));
+}
+
 export function getBusinessPurchasePreview(state, businessId) {
   ensureBusinessesState(state);
   const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId);
@@ -413,7 +423,11 @@ export function applyPassiveIncomeTick(state, now = Date.now()) {
   }
 
   const totalPerSec = getTotalPassivePerSec(state);
-  const earned = Math.round(totalPerSec * intervalSeconds * cycles);
+  const rawEarned = totalPerSec * intervalSeconds * cycles;
+  let earned = Math.round(rawEarned);
+  if (cycles > 0 && totalPerSec > 0) {
+    earned = Math.max(cycles, earned);
+  }
   if (earned > 0) {
     state.money += earned;
   }
@@ -436,7 +450,11 @@ export function grantOfflineEarnings(state, now = Date.now()) {
   const cycles = Math.floor(clampedSeconds / intervalSeconds);
   const consumedSeconds = cycles * intervalSeconds;
   const totalPerSec = getTotalPassivePerSec(state);
-  const earned = Math.round(totalPerSec * consumedSeconds);
+  const rawEarned = totalPerSec * consumedSeconds;
+  let earned = Math.round(rawEarned);
+  if (cycles > 0 && totalPerSec > 0) {
+    earned = Math.max(cycles, earned);
+  }
 
   if (earned > 0) {
     state.money += earned;
