@@ -79,7 +79,7 @@ function renderGame(viewModel) {
       </header>
 
       <section class="card">
-        <div class="top-actions">
+        <div class="top-actions tab-strip">
           <button class="tab-btn ${activeTab === "dashboard" ? "active" : ""}" data-action="tab" data-tab="dashboard">Dashboard</button>
           <button class="tab-btn ${activeTab === "jobs" ? "active" : ""}" data-action="tab" data-tab="jobs">All Jobs</button>
           <button class="tab-btn ${activeTab === "businesses" ? "active" : ""}" data-action="tab" data-tab="businesses">Businesses</button>
@@ -286,7 +286,7 @@ function renderBusinessesTab(state, now) {
       <article class="card">
         <h2>Businesses</h2>
         <div class="stats-line">
-          <span>Total passive income: <strong>$${formatNumber(totalPassivePerSec)} / sec</strong></span>
+          <span>Total passive income: <strong>$${formatNumber(totalPassivePerSec * payoutIntervalSeconds)} per payout</strong></span>
           <span>Payout interval: <strong>${formatCountdown(payoutIntervalSeconds * 1000)}</strong></span>
         </div>
         <div class="top-actions">
@@ -326,7 +326,6 @@ function renderBusinessesTab(state, now) {
                   `
                   : `
                     <div class="row-meta">Qty: ${formatNumber(businessState.qty)} | Level: ${formatNumber(businessState.level)}</div>
-                    <div class="row-meta">Income: $${formatNumber(incomePerSec)} / sec</div>
                     <div class="row-meta">Payout/cycle: $${formatNumber(incomePerSec * payoutIntervalSeconds)} every ${formatCountdown(payoutIntervalSeconds * 1000)}</div>
                     <div class="progress-wrap"><div class="progress-bar" style="width: ${(cycle.progress * 100).toFixed(1)}%"></div></div>
                     <div class="row-meta">Next payout in: ${formatCountdown(cycle.remainingMs)}</div>
