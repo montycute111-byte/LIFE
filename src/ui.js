@@ -304,6 +304,7 @@ function renderBusinessesTab(state, now) {
           ${BUSINESS_DEFS.map((definition) => {
             const locked = state.level < definition.unlockLevel;
             const businessState = getBusinessState(state, definition.id);
+            const hasUnits = businessState.qty > 0;
             const incomePerSec = getBusinessIncomePerSec(definition, businessState);
             const preview = getBusinessPurchasePreview(state, definition.id);
             const plannedCost = preview.qty > 0 ? preview.cost : preview.nextUnitCost;
@@ -330,8 +331,8 @@ function renderBusinessesTab(state, now) {
                   : `
                     <div class="row-meta">Qty: ${formatNumber(businessState.qty)} | Level: ${formatNumber(businessState.level)}</div>
                     <div class="row-meta">Payout/cycle: $${formatNumber(incomePerSec * payoutIntervalSeconds)} every ${formatCountdown(payoutIntervalSeconds * 1000)}</div>
-                    <div class="progress-wrap"><div class="progress-bar" style="width: ${(cycle.progress * 100).toFixed(1)}%"></div></div>
-                    <div class="row-meta">Next payout in: ${formatCountdown(cycle.remainingMs)}</div>
+                    <div class="progress-wrap"><div class="progress-bar" style="width: ${(hasUnits ? cycle.progress : 0) * 100}%"></div></div>
+                    <div class="row-meta">${hasUnits ? `Next payout in: ${formatCountdown(cycle.remainingMs)}` : "Buy at least 1 unit to start passive income."}</div>
                     <div class="row-meta">Next cost: $${formatNumber(plannedCost)}</div>
                     <div class="top-actions">
                       <button class="btn" data-action="buy-business" data-id="${definition.id}" ${preview.qty < 1 ? "disabled" : ""}>${buyButtonLabel}</button>
