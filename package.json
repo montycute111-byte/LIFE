@@ -1,0 +1,5 @@
+{
+  "name": "fakebank-local-only",
+  "private": true,
+  "type": "module"
+}

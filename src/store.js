@@ -1,0 +1,305 @@
+import { pushLog, syncLevelProgress } from "./gameState.js";
+import { getResidenceModifiers } from "./realEstate.js";
+
+export const ABILITY_DURATION_MS = 21 * 60 * 60 * 1000;
+const ORDER_MIN_MS = 30 * 1000;
+const ORDER_MAX_MS = 3 * 60 * 1000;
+const TIME_WARP_INTERVAL_MS = 10 * 60 * 1000;
+
+export const STORE_ITEMS = [
+  {
+    id: "energy_drink",
+    name: "Energy Drink",
+    description: "A quick boost for your shift hustle.",
+    price: 500,
+    ability: "Jobs complete 20% faster.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "golden_calculator",
+    name: "Golden Calculator",
+    description: "Premium math for premium profits.",
+    price: 1200,
+    ability: "Earn 25% more money from jobs.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "time_warp_chip",
+    name: "Time Warp Chip",
+    description: "Prototype chip that bends your schedule.",
+    price: 2500,
+    ability: "Instantly finish one job every 10 minutes.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "focus_headphones",
+    name: "Focus Headphones",
+    description: "Noise-canceling grind mode.",
+    price: 900,
+    ability: "Gain +50% XP from jobs.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "lucky_coin",
+    name: "Lucky Coin",
+    description: "A tiny chance with big upside.",
+    price: 1500,
+    ability: "Small chance jobs pay double.",
+    abilityDuration: "21 hours"
+  }
+];
+
+export function buyStoreItem(state, itemId, now = Date.now()) {
+  const item = STORE_ITEMS.find((entry) => entry.id === itemId);
+  if (!item) {
+    return {
+      ok: false,
+      message: "Item not found."
+    };
+  }
+  if (state.money < item.price) {
+    return {
+      ok: false,
+      message: "Not enough cash."
+    };
+  }
+
+  const residenceModifiers = getResidenceModifiers(state);
+  const baseDeliveryDelay = randomInt(ORDER_MIN_MS, ORDER_MAX_MS);
+  const deliverySpeed = Math.max(0, Math.min(0.6, Number(residenceModifiers.deliverySpeed || 0)));
+  const deliveryDelay = Math.max(1, Math.round(baseDeliveryDelay * (1 - deliverySpeed)));
+  const orderedAt = now;
+  const deliveryTime = now + deliveryDelay;
+  const order = {
+    id: createOrderId(item.id, now),
+    itemId: item.id,
+    itemName: item.name,
+    price: item.price,
+    ability: item.ability,
+    abilityDuration: item.abilityDuration,
+    orderedAt,
+    deliveryTime,
+    status: "Ordered"
+  };
+
+  state.money -= item.price;
+  state.orders.push(order);
+  pushLog(state, `Ordered ${item.name} for $${item.price}.`, now);
+
+  return {
+    ok: true,
+    order,
+    item
+  };
+}
+
+export function activateInventoryItem(state, itemId, now = Date.now()) {
+  const activeAbility = getActiveAbility(state, now);
+  if (activeAbility) {
+    return {
+      ok: false,
+      message: "An ability is already active."
+    };
+  }
+
+  const inventoryEntry = (Array.isArray(state.inventory) ? state.inventory : []).find((item) => item.itemId === itemId);
+  if (!inventoryEntry || Number(inventoryEntry.qty || 0) < 1) {
+    return {
+      ok: false,
+      message: "You do not own this item."
+    };
+  }
+
+  const catalogItem = STORE_ITEMS.find((item) => item.id === itemId);
+  if (!catalogItem) {
+    return {
+      ok: false,
+      message: "Item not found."
+    };
+  }
+
+  inventoryEntry.qty = Number(inventoryEntry.qty || 0) - 1;
+  if (inventoryEntry.qty <= 0) {
+    state.inventory = state.inventory.filter((item) => item.itemId !== itemId);
+  }
+
+  state.activeAbility = {
+    itemId: catalogItem.id,
+    itemName: catalogItem.name,
+    effect: catalogItem.ability,
+    activatedAt: now,
+    expiresAt: now + ABILITY_DURATION_MS,
+    nextInstantAt: catalogItem.id === "time_warp_chip" ? now + TIME_WARP_INTERVAL_MS : null
+  };
+
+  pushLog(state, `Activated ${catalogItem.name} for 21 hours.`, now);
+  return {
+    ok: true,
+    item: catalogItem
+  };
+}
+
+export function processStoreTimers(state, now = Date.now()) {
+  const updates = {
+    deliveredItems: []
+  };
+  updateOrderStatuses(state, now, updates);
+  deliverArrivedOrders(state, now);
+  expireAbility(state, now);
+  processTimeWarpTicks(state, now);
+  return updates;
+}
+
+export function getActiveAbility(state, now = Date.now()) {
+  const ability = state?.activeAbility;
+  if (!ability || typeof ability !== "object") {
+    return null;
+  }
+  return Number(ability.expiresAt || 0) > now ? ability : null;
+}
+
+export function getOrderStatus(order, now = Date.now()) {
+  const total = Math.max(1, Number(order.deliveryTime || 0) - Number(order.orderedAt || 0));
+  const elapsed = Math.max(0, now - Number(order.orderedAt || 0));
+  const ratio = Math.min(1, elapsed / total);
+
+  if (ratio >= 1) {
+    return "Delivered";
+  }
+  if (ratio >= 0.75) {
+    return "Out for delivery";
+  }
+  if (ratio >= 0.25) {
+    return "Shipping";
+  }
+  return "Ordered";
+}
+
+export function getPlayerEffects(state, now = Date.now()) {
+  const focusBurstActive = Number(state?.boosts?.focusBurstUntil || 0) > now;
+  const activeAbility = getActiveAbility(state, now);
+  const abilityId = activeAbility?.itemId || "";
+  const levelBonusSlots = Math.max(0, Math.floor(Number(state?.level || 1)) - 1);
+  const residenceModifiers = getResidenceModifiers(state);
+
+  return {
+    payoutMultiplier: (1 + (focusBurstActive ? 0.35 : 0)) * (abilityId === "golden_calculator" ? 1.25 : 1),
+    xpMultiplier: abilityId === "focus_headphones" ? 1.5 : 1,
+    durationMultiplier: abilityId === "energy_drink" ? 0.8 : 1,
+    cooldownMultiplier: 1,
+    streakWindowMs: 12 * 60 * 60 * 1000,
+    maxActiveJobs: 3 + levelBonusSlots + Math.max(0, Number(residenceModifiers.jobSlotsBonus || 0)),
+    focusBurstActive,
+    luckyDoubleChance: abilityId === "lucky_coin" ? 0.12 : 0
+  };
+}
+
+export function awardXp(state, amount, now = Date.now()) {
+  state.xp += amount;
+  const levelsGained = syncLevelProgress(state);
+  if (levelsGained > 0) {
+    pushLog(state, `Level up! You reached level ${state.level}.`, now);
+  }
+  return levelsGained;
+}
+
+function updateOrderStatuses(state, now, updates) {
+  const orders = Array.isArray(state.orders) ? state.orders : [];
+  for (const order of orders) {
+    const previousStatus = String(order.status || "");
+    const nextStatus = getOrderStatus(order, now);
+    order.status = nextStatus;
+    if (previousStatus !== "Delivered" && nextStatus === "Delivered") {
+      updates.deliveredItems.push(order.itemName);
+    }
+  }
+}
+
+function deliverArrivedOrders(state, now) {
+  const orders = Array.isArray(state.orders) ? state.orders : [];
+  const activeOrders = [];
+
+  for (const order of orders) {
+    if (Number(order.deliveryTime || 0) <= now) {
+      addInventoryItem(state, order);
+      pushLog(state, `${order.itemName} was delivered to inventory.`, now);
+      continue;
+    }
+    activeOrders.push(order);
+  }
+
+  state.orders = activeOrders;
+}
+
+function addInventoryItem(state, order) {
+  const list = Array.isArray(state.inventory) ? state.inventory : [];
+  const existing = list.find((entry) => entry.itemId === order.itemId);
+  if (existing) {
+    existing.qty = Number(existing.qty || 0) + 1;
+    return;
+  }
+
+  list.push({
+    itemId: order.itemId,
+    itemName: order.itemName,
+    ability: order.ability,
+    abilityDuration: order.abilityDuration,
+    qty: 1
+  });
+  state.inventory = list;
+}
+
+function expireAbility(state, now) {
+  const active = state?.activeAbility;
+  if (!active || typeof active !== "object") {
+    return;
+  }
+  if (Number(active.expiresAt || 0) <= now) {
+    pushLog(state, `${active.itemName} ability expired.`, now);
+    state.activeAbility = null;
+  }
+}
+
+function processTimeWarpTicks(state, now) {
+  const active = getActiveAbility(state, now);
+  if (!active || active.itemId !== "time_warp_chip") {
+    return;
+  }
+
+  let nextTick = Number(active.nextInstantAt || 0);
+  if (nextTick <= 0) {
+    nextTick = now + TIME_WARP_INTERVAL_MS;
+  }
+
+  while (nextTick <= now) {
+    instantlyFinishOneJob(state, now);
+    nextTick += TIME_WARP_INTERVAL_MS;
+  }
+  active.nextInstantAt = nextTick;
+}
+
+function instantlyFinishOneJob(state, now) {
+  const jobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
+  if (!jobs.length) {
+    return;
+  }
+
+  let soonest = jobs[0];
+  for (const job of jobs) {
+    if (job.endsAt < soonest.endsAt) {
+      soonest = job;
+    }
+  }
+  soonest.endsAt = Math.min(soonest.endsAt, now);
+  pushLog(state, `Time Warp Chip instantly finished ${soonest.name}.`, now);
+}
+
+function createOrderId(itemId, now) {
+  return `${itemId}_${now}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function randomInt(min, max) {
+  const low = Math.ceil(min);
+  const high = Math.floor(max);
+  return Math.floor(Math.random() * (high - low + 1)) + low;
+}
