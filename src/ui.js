@@ -4,8 +4,8 @@ import {
   getPassiveCycleProgress,
   getBusinessPurchasePreview,
   getPassiveIntervalSeconds,
+  getTotalPassivePayoutPerCycle,
   getBusinessState,
-  getTotalPassivePerSec,
   getUpgradeCost
 } from "./businesses.js";
 import { xpRequiredForLevel } from "./gameState.js";
@@ -280,7 +280,7 @@ function renderBusinessesTab(state, now) {
   const buyMode = state?.businesses?.buyMultiplier === 10 || state?.businesses?.buyMultiplier === "max"
     ? state.businesses.buyMultiplier
     : 1;
-  const totalPassivePerSec = getTotalPassivePerSec(state);
+  const totalPayoutPerCycle = getTotalPassivePayoutPerCycle(state);
   const payoutIntervalSeconds = getPassiveIntervalSeconds(state);
   const cycle = getPassiveCycleProgress(state, now);
 
@@ -289,7 +289,7 @@ function renderBusinessesTab(state, now) {
       <article class="card">
         <h2>Businesses</h2>
         <div class="stats-line">
-          <span>Total passive income: <strong>$${formatNumber(totalPassivePerSec * payoutIntervalSeconds)} per payout</strong></span>
+          <span>Total passive income: <strong>$${formatNumber(totalPayoutPerCycle)} per payout</strong></span>
           <span>Payout interval: <strong>${formatCountdown(payoutIntervalSeconds * 1000)}</strong></span>
         </div>
         <div class="top-actions">
