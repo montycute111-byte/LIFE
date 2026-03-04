@@ -5,6 +5,9 @@ export const ABILITY_DURATION_MS = 21 * 60 * 60 * 1000;
 const ORDER_MIN_MS = 30 * 1000;
 const ORDER_MAX_MS = 3 * 60 * 1000;
 const TIME_WARP_INTERVAL_MS = 10 * 60 * 1000;
+const JOB_SLOT_ITEM_ID = "job_slot_permit";
+const JOB_SLOT_BASE_COST = 1000;
+const JOB_SLOT_COST_GROWTH = 1.35;
 
 export const STORE_ITEMS = [
   {
@@ -46,6 +49,14 @@ export const STORE_ITEMS = [
     price: 1500,
     ability: "Small chance jobs pay double.",
     abilityDuration: "21 hours"
+  },
+  {
+    id: JOB_SLOT_ITEM_ID,
+    name: "Job Slot Permit",
+    description: "Permanent +1 active job slot. Buy repeatedly; each purchase costs more.",
+    price: JOB_SLOT_BASE_COST,
+    ability: "Adds +1 permanent job slot.",
+    abilityDuration: "Permanent"
   }
 ];
 
@@ -57,10 +68,23 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
       message: "Item not found."
     };
   }
-  if (state.money < item.price) {
+  const price = getStoreItemPrice(state, itemId);
+  if (state.money < price) {
     return {
       ok: false,
       message: "Not enough cash."
+    };
+  }
+
+  if (item.id === JOB_SLOT_ITEM_ID) {
+    state.money -= price;
+    state.ownedItems = state.ownedItems && typeof state.ownedItems === "object" ? state.ownedItems : {};
+    state.ownedItems[JOB_SLOT_ITEM_ID] = getJobSlotPermitCount(state) + 1;
+    pushLog(state, `Purchased ${item.name} for $${price}.`, now);
+
+    return {
+      ok: true,
+      purchasedItemName: item.name
     };
   }
 
@@ -74,7 +98,7 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
     id: createOrderId(item.id, now),
     itemId: item.id,
     itemName: item.name,
-    price: item.price,
+    price,
     ability: item.ability,
     abilityDuration: item.abilityDuration,
     orderedAt,
@@ -82,9 +106,9 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
     status: "Ordered"
   };
 
-  state.money -= item.price;
+  state.money -= price;
   state.orders.push(order);
-  pushLog(state, `Ordered ${item.name} for $${item.price}.`, now);
+  pushLog(state, `Ordered ${item.name} for $${price}.`, now);
 
   return {
     ok: true,
@@ -180,6 +204,7 @@ export function getPlayerEffects(state, now = Date.now()) {
   const activeAbility = getActiveAbility(state, now);
   const abilityId = activeAbility?.itemId || "";
   const levelBonusSlots = Math.max(0, Math.floor(Number(state?.level || 1)) - 1);
+  const purchasedSlotBonus = getJobSlotPermitCount(state);
   const residenceModifiers = getResidenceModifiers(state);
 
   return {
@@ -188,10 +213,19 @@ export function getPlayerEffects(state, now = Date.now()) {
     durationMultiplier: abilityId === "energy_drink" ? 0.8 : 1,
     cooldownMultiplier: 1,
     streakWindowMs: 12 * 60 * 60 * 1000,
-    maxActiveJobs: 3 + levelBonusSlots + Math.max(0, Number(residenceModifiers.jobSlotsBonus || 0)),
+    maxActiveJobs: 3 + levelBonusSlots + purchasedSlotBonus + Math.max(0, Number(residenceModifiers.jobSlotsBonus || 0)),
     focusBurstActive,
     luckyDoubleChance: abilityId === "lucky_coin" ? 0.12 : 0
   };
+}
+
+export function getStoreItemPrice(state, itemId) {
+  if (itemId === JOB_SLOT_ITEM_ID) {
+    const owned = getJobSlotPermitCount(state);
+    return Math.max(1, Math.round(JOB_SLOT_BASE_COST * (JOB_SLOT_COST_GROWTH ** owned)));
+  }
+  const item = STORE_ITEMS.find((entry) => entry.id === itemId);
+  return item ? item.price : 0;
 }
 
 export function awardXp(state, amount, now = Date.now()) {
@@ -302,4 +336,8 @@ function randomInt(min, max) {
   const low = Math.ceil(min);
   const high = Math.floor(max);
   return Math.floor(Math.random() * (high - low + 1)) + low;
+}
+
+function getJobSlotPermitCount(state) {
+  return Math.max(0, Math.floor(Number(state?.ownedItems?.[JOB_SLOT_ITEM_ID] || 0)));
 }
