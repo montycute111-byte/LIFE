@@ -92,8 +92,8 @@ function renderGame(viewModel) {
         <div>
           <h1>Fake Bank Account Simulator</h1>
           <p class="sub">Current user: ${escapeHtml(session.username)}${session.isGuest ? " (guest)" : ""}</p>
-          <p class="hint">Save status: ${escapeHtml(saveStatus || "Idle")}</p>
-          <p class="hint">${escapeHtml(notice || "Every action saves locally, plus autosave every 30 seconds.")}</p>
+          <p class="hint save-status-line">Save status: ${escapeHtml(saveStatus || "Idle")}</p>
+          <p class="hint autosave-line">${escapeHtml(notice || "Every action saves locally, plus autosave every 30 seconds.")}</p>
         </div>
         <div class="top-actions">
           <button id="dailyBtn" class="btn">Claim Daily</button>

@@ -528,12 +528,9 @@ select {
     gap: 10px;
   }
   .app-topbar {
-    position: sticky;
-    top: 8px;
-    z-index: 35;
+    position: static;
     border-radius: 12px;
     padding: 12px;
-    backdrop-filter: blur(8px);
   }
   .app-topbar h1 {
     font-size: 1rem;
@@ -558,6 +555,17 @@ select {
   }
   .top-actions:not(.tab-strip) .btn {
     width: 100%;
+  }
+  .app-topbar .top-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .app-topbar .save-status-line {
+    display: none;
+  }
+  .app-topbar .autosave-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .row-head {
     align-items: flex-start;
