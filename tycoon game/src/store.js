@@ -1,5 +1,7 @@
 import { pushLog, syncLevelProgress } from "./gameState.js";
 import { awardLevelUpCrates } from "./crates.js";
+import { getPowerItemMultipliers } from "./powerItems.js";
+import { trackQuestEvent } from "./quests/questEngine.js";
 import { getRebirthRuntimeModifiers } from "./rebirth.js";
 import { getResidenceModifiers } from "./realEstate.js";
 
@@ -98,6 +100,8 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
       state.ownedItems[ABILITY_SLOT_ITEM_ID] = getAbilitySlotPermitCount(state) + 1;
     }
     pushLog(state, `Purchased ${item.name} for $${price}.`, now);
+    trackQuestEvent(state, "ITEM_BUY", { count: 1, amount: price });
+    trackQuestEvent(state, "ITEM_SPEND", { amount: price });
 
     return {
       ok: true,
@@ -126,6 +130,9 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
   state.money -= price;
   state.orders.push(order);
   pushLog(state, `Ordered ${item.name} for $${price}.`, now);
+  trackQuestEvent(state, "ITEM_BUY", { count: 1, amount: price });
+  trackQuestEvent(state, "ITEM_SPEND", { amount: price });
+  trackQuestEvent(state, "ORDER_PLACE", { count: 1, amount: 1 });
 
   return {
     ok: true,
@@ -183,6 +190,7 @@ export function activateInventoryItem(state, itemId, now = Date.now()) {
   state.activeAbility = state.activeAbilities[0] || null;
 
   pushLog(state, `Activated ${catalogItem.name} for 21 hours.`, now);
+  trackQuestEvent(state, "ITEM_ACTIVATE", { count: 1, amount: 1 });
   return {
     ok: true,
     item: catalogItem
@@ -238,12 +246,13 @@ export function getPlayerEffects(state, now = Date.now()) {
   const purchasedSlotBonus = getJobSlotPermitCount(state);
   const residenceModifiers = getResidenceModifiers(state);
   const rebirthModifiers = getRebirthRuntimeModifiers(state);
+  const powerMultipliers = getPowerItemMultipliers(state, now);
 
   return {
     payoutMultiplier: (1 + (focusBurstActive ? 0.35 : 0)) * (activeIds.has("golden_calculator") ? 1.25 : 1) * rebirthModifiers.jobIncomeMult,
     xpMultiplier: activeIds.has("focus_headphones") ? 1.5 : 1,
     durationMultiplier: (activeIds.has("energy_drink") ? 0.8 : 1) * rebirthModifiers.jobTimeMult,
-    cooldownMultiplier: 1,
+    cooldownMultiplier: Math.max(0, Number(powerMultipliers.cooldownMult || 1)),
     streakWindowMs: 12 * 60 * 60 * 1000,
     maxActiveJobs: 3
       + levelBonusSlots
@@ -251,21 +260,23 @@ export function getPlayerEffects(state, now = Date.now()) {
       + Math.max(0, Number(residenceModifiers.jobSlotsBonus || 0))
       + Math.max(0, Number(rebirthModifiers.extraJobSlots || 0)),
     focusBurstActive,
-    luckyDoubleChance: activeIds.has("lucky_coin") ? 0.12 : 0
+    luckyDoubleChance: (activeIds.has("lucky_coin") ? 0.12 : 0) + Math.max(0, Number(powerMultipliers.luckBonus || 0))
   };
 }
 
 export function getStoreItemPrice(state, itemId) {
+  const powerMultipliers = getPowerItemMultipliers(state);
+  const costMult = Math.max(0, Number(powerMultipliers.costMult || 1));
   if (itemId === JOB_SLOT_ITEM_ID) {
     const owned = getJobSlotPermitCount(state);
-    return Math.max(1, Math.round(JOB_SLOT_BASE_COST * (JOB_SLOT_COST_GROWTH ** owned)));
+    return Math.max(1, Math.round(JOB_SLOT_BASE_COST * (JOB_SLOT_COST_GROWTH ** owned) * costMult));
   }
   if (itemId === ABILITY_SLOT_ITEM_ID) {
     const owned = getAbilitySlotPermitCount(state);
-    return Math.max(1, Math.round(ABILITY_SLOT_BASE_COST * (ABILITY_SLOT_COST_GROWTH ** owned)));
+    return Math.max(1, Math.round(ABILITY_SLOT_BASE_COST * (ABILITY_SLOT_COST_GROWTH ** owned) * costMult));
   }
   const item = STORE_ITEMS.find((entry) => entry.id === itemId);
-  return item ? item.price : 0;
+  return item ? Math.max(1, Math.round(item.price * costMult)) : 0;
 }
 
 export function getMaxActiveAbilitySlots(state) {
@@ -273,9 +284,15 @@ export function getMaxActiveAbilitySlots(state) {
 }
 
 export function awardXp(state, amount, now = Date.now()) {
-  state.xp += amount;
+  const powerMultipliers = getPowerItemMultipliers(state, now);
+  const safeAmount = Math.max(0, Math.round(Number(amount || 0) * Math.max(0, Number(powerMultipliers.xpMult || 1))));
+  state.xp += safeAmount;
   const levelsGained = syncLevelProgress(state);
   awardLevelUpCrates(state, levelsGained, now);
+  trackQuestEvent(state, "XP_GAIN", { amount: safeAmount });
+  if (levelsGained > 0) {
+    trackQuestEvent(state, "LEVEL_UP", { count: levelsGained, amount: levelsGained });
+  }
   if (levelsGained > 0) {
     pushLog(state, `Level up! You reached level ${state.level}.`, now);
   }

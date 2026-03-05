@@ -7,19 +7,29 @@ import {
   upgradeBusiness
 } from "./businesses.js";
 import { openCrate, pruneExpiredBoosts } from "./crates.js";
+import { checkEducationCompletion, enrollEducationProgram } from "./education.js";
 import { claimDailyReward, createDefaultState, migrateState, updateLastLogin } from "./gameState.js";
 import { claimReadyJobs, refreshTimedState, startJobToFillSlots, useInstantJobToken } from "./jobs.js";
+import {
+  activatePowerItem,
+  buyPowerItem,
+  ensurePowerItemsState,
+  getPowerItemMultipliers,
+  syncPowerItems
+} from "./powerItems.js";
 import {
   buyRebirthShopUpgrade,
   ensureRebirthState,
   performRebirth
 } from "./rebirth.js";
 import { buyResidence, moveInResidence, moveOutResidence, upgradeActiveResidence } from "./realEstate.js";
+import { claimQuest, ensureDailyQuests, trackQuestEvent } from "./quests/questEngine.js";
 import { loadUserState, saveUserState } from "./storage.js";
 import { activateInventoryItem, buyStoreItem } from "./store.js";
 import { renderApp } from "./ui.js";
 
 const AUTOSAVE_INTERVAL_MS = 30 * 1000;
+const QUEST_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 
 const root = document.getElementById("app");
 const viewModel = {
@@ -32,7 +42,8 @@ const viewModel = {
   crateOpeningStage: "",
   crateOpeningRarity: "",
   lastCrateResult: null,
-  crateOpenTimers: []
+  crateOpenTimers: [],
+  isEnrollingEducation: false
 };
 
 boot();
@@ -52,6 +63,9 @@ function boot() {
   window.setInterval(() => {
     persist("Autosaved locally");
   }, AUTOSAVE_INTERVAL_MS);
+  window.setInterval(() => {
+    refreshDailyQuestsIfNeeded();
+  }, QUEST_REFRESH_INTERVAL_MS);
 
   window.addEventListener("beforeunload", () => {
     persist("Saved before close");
@@ -63,6 +77,9 @@ function boot() {
     if (document.visibilityState === "hidden") {
       persist("Saved in background");
     }
+  });
+  window.addEventListener("focus", () => {
+    refreshDailyQuestsIfNeeded();
   });
 }
 
@@ -87,7 +104,11 @@ function loadGame(session, options = {}) {
 
   updateLastLogin(baseState);
   ensureRebirthState(baseState);
+  ensurePowerItemsState(baseState);
+  const educationLoadUpdates = checkEducationCompletion(baseState);
+  const powerSync = syncPowerItems(baseState);
   const offline = grantOfflineEarnings(baseState);
+  const questRoll = ensureDailyQuests(baseState);
   viewModel.session = session;
   viewModel.state = baseState;
   viewModel.authError = "";
@@ -99,6 +120,15 @@ function loadGame(session, options = {}) {
   }
   if (offline.earned > 0) {
     notices.push(formatOfflineEarningsNotice(offline.earned, offline.elapsedSeconds));
+  }
+  if (educationLoadUpdates.completedCount > 0) {
+    notices.push("Education completed while offline.");
+  }
+  if (powerSync.changed && powerSync.expiredItemName) {
+    notices.push(`${powerSync.expiredItemName} expired while offline.`);
+  }
+  if (questRoll.rolled) {
+    notices.push("New daily quests are ready.");
   }
   viewModel.notice = notices.join(" ");
 
@@ -121,17 +151,24 @@ function render() {
     onUseInstantToken: (jobId) => runGameAction((state) => useInstantJobToken(state, jobId), { preserveScroll: true }),
     onBuyStoreItem: (itemId) => runGameAction((state) => buyStoreItem(state, itemId)),
     onActivateInventoryItem: (itemId) => runGameAction((state) => activateInventoryItem(state, itemId)),
+    onBuyPowerItem: (itemId) => runGameAction((state) => buyPowerItem(state, itemId), { preserveScroll: true }),
+    onActivatePowerItem: (itemId) => runGameAction((state) => activatePowerItem(state, itemId), { preserveScroll: true }),
     onOpenCrate: (rarity) => handleOpenCrate(rarity),
+    onEnrollEducation: (programId) => handleEnrollEducation(programId),
     onBuyRebirthUpgrade: (upgradeId) => runGameAction((state) => buyRebirthShopUpgrade(state, upgradeId), { preserveScroll: true }),
     onConfirmRebirth: () => handleRebirthConfirm(),
+    onSetJobsSubTab: (tabId) => runGameAction((state) => setJobsSubTab(state, tabId), { preserveNotice: true, preserveScroll: true }),
     onSetBusinessBuyMode: (mode) => runGameAction((state) => setBusinessBuyMultiplier(state, mode), { preserveNotice: true, preserveScroll: true }),
+    onSetBusinessesSubTab: (tabId) => runGameAction((state) => setBusinessesSubTab(state, tabId), { preserveNotice: true, preserveScroll: true }),
     onBuyBusiness: (businessId) => runGameAction((state) => buyBusinessUnits(state, businessId), { preserveScroll: true }),
     onUpgradeBusiness: (businessId) => runGameAction((state) => upgradeBusiness(state, businessId), { preserveScroll: true }),
+    onClaimQuest: (questId) => runGameAction((state) => claimQuest(state, questId), { preserveScroll: true }),
     onBuyResidence: (residenceId) => runGameAction((state) => buyResidence(state, residenceId), { preserveScroll: true }),
     onMoveInResidence: (residenceId) => runGameAction((state) => moveInResidence(state, residenceId), { preserveScroll: true }),
     onMoveOutResidence: () => runGameAction((state) => moveOutResidence(state), { preserveScroll: true }),
     onUpgradeResidence: () => runGameAction((state) => upgradeActiveResidence(state), { preserveScroll: true }),
-    onSetTab: (tabId) => runGameAction((state) => setActiveTab(state, tabId), { preserveNotice: true })
+    onSetTab: (tabId) => runGameAction((state) => setActiveTab(state, tabId), { preserveNotice: true }),
+    onSetStoreTab: (tabId) => runGameAction((state) => setStoreSubTab(state, tabId), { preserveNotice: true, preserveScroll: true })
   });
 }
 
@@ -174,6 +211,7 @@ function handleLogout() {
   viewModel.crateOpeningStage = "";
   viewModel.crateOpeningRarity = "";
   viewModel.lastCrateResult = null;
+  viewModel.isEnrollingEducation = false;
   render();
 }
 
@@ -193,6 +231,14 @@ function runGameAction(action, options = {}) {
     }
     return result || null;
   }
+
+  if (typeof result?.reward === "number" && Number(result?.xpGain || 0) > 0) {
+    trackQuestEvent(viewModel.state, "XP_GAIN", { amount: Number(result.xpGain || 0) });
+    if (Number(result?.levelsGained || 0) > 0) {
+      trackQuestEvent(viewModel.state, "LEVEL_UP", { count: Number(result.levelsGained || 0), amount: Number(result.levelsGained || 0) });
+    }
+  }
+  trackQuestEvent(viewModel.state, "CASH_BALANCE", { amount: Number(viewModel.state.money || 0) });
 
   persist("Saved locally");
   if (result?.ok !== false) {
@@ -240,14 +286,26 @@ function describeActionResult(result) {
   if (result.rarity && result.rewardType) {
     return `${result.rarity[0].toUpperCase()}${result.rarity.slice(1)} Crate: ${result.description}`;
   }
+  if (result.programName) {
+    return `Enrolled in ${result.programName}.`;
+  }
   if (result.order?.itemName) {
     return "Ordered!";
   }
   if (result.purchasedItemName) {
     return `${result.purchasedItemName} purchased.`;
   }
+  if (result.activatedItemName) {
+    if (result.replacedItemName) {
+      return `${result.activatedItemName} activated. Replaced ${result.replacedItemName}.`;
+    }
+    return `${result.activatedItemName} activated.`;
+  }
   if (result.item?.name) {
     return `${result.item.name} activated.`;
+  }
+  if (result.questTitle) {
+    return `Quest claimed: ${result.questTitle}.`;
   }
   if (result.businessName && Number(result.purchasedQty || 0) > 0) {
     return `Bought ${result.purchasedQty}x ${result.businessName}.`;
@@ -289,11 +347,38 @@ function applyTimedUpdates() {
   if (!viewModel.state) {
     return;
   }
+  const powerSync = syncPowerItems(viewModel.state);
+  if (powerSync.changed && powerSync.expiredItemName) {
+    viewModel.notice = `${powerSync.expiredItemName} expired.`;
+    persist("Saved after power item expiry");
+  }
   const updates = refreshTimedState(viewModel.state);
+  const educationUpdates = checkEducationCompletion(viewModel.state);
+  if (educationUpdates.completedCount > 0) {
+    viewModel.notice = "Education program completed!";
+    persist("Saved after education completion");
+  }
   pruneExpiredBoosts(viewModel.state);
   const passive = applyPassiveIncomeTick(viewModel.state);
   if (Number(passive?.earned || 0) > 0) {
+    const cycles = Math.max(
+      1,
+      Math.floor(Number(passive.elapsedSeconds || 0) / Math.max(1, Number(passive.intervalSeconds || 1)))
+    );
+    const bizQuest = trackQuestEvent(viewModel.state, "BIZ_COLLECT", { amount: Number(passive.earned || 0), count: cycles });
+    const cashQuest = trackQuestEvent(viewModel.state, "CASH_BALANCE", { amount: Number(viewModel.state.money || 0) });
+    if (bizQuest.changed || cashQuest.changed) {
+      persist("Saved quest progress");
+    }
     viewModel.notice = `Passive income: +$${Math.round(passive.earned).toLocaleString()}.`;
+  }
+  const activePower = getPowerItemMultipliers(viewModel.state);
+  if (activePower.autoCollectJobs) {
+    const autoClaim = claimReadyJobs(viewModel.state);
+    if (autoClaim?.ok) {
+      viewModel.notice = `Auto Collector claimed ${autoClaim.count} job(s) for $${autoClaim.totalCash}.`;
+      persist("Saved after auto-collect");
+    }
   }
   if (Number(updates?.deliveredCount || 0) > 0) {
     viewModel.notice = "Delivered!";
@@ -302,8 +387,34 @@ function applyTimedUpdates() {
 
 function setActiveTab(state, tabId) {
   const safeTab = String(tabId || "").trim();
-  const allowedTabs = new Set(["dashboard", "store", "orders", "inventory", "jobs", "businesses", "crates", "realestate", "rebirth"]);
+  if (safeTab === "poweritems") {
+    state.settings.activeTab = "store";
+    state.settings.storeSubTab = "power";
+    return { ok: true };
+  }
+  const allowedTabs = new Set(["dashboard", "store", "orders", "inventory", "jobs", "businesses", "crates", "education", "quests", "realestate", "rebirth"]);
   state.settings.activeTab = allowedTabs.has(safeTab) ? safeTab : "dashboard";
+  return { ok: true };
+}
+
+function setStoreSubTab(state, tabId) {
+  const safeTab = String(tabId || "").trim().toLowerCase();
+  state.settings.storeSubTab = safeTab === "power" ? "power" : "items";
+  state.settings.activeTab = "store";
+  return { ok: true };
+}
+
+function setJobsSubTab(state, tabId) {
+  const safeTab = String(tabId || "").trim().toLowerCase();
+  state.settings.jobsSubTab = (safeTab === "hs" || safeTab === "college") ? safeTab : "core";
+  state.settings.activeTab = "jobs";
+  return { ok: true };
+}
+
+function setBusinessesSubTab(state, tabId) {
+  const safeTab = String(tabId || "").trim().toLowerCase();
+  state.settings.businessesSubTab = (safeTab === "hs" || safeTab === "college") ? safeTab : "core";
+  state.settings.activeTab = "businesses";
   return { ok: true };
 }
 
@@ -358,6 +469,17 @@ function handleOpenCrate(rarity) {
   viewModel.crateOpenTimers = [openingTimer, resolveTimer];
 }
 
+function handleEnrollEducation(programId) {
+  if (!viewModel.state || viewModel.isEnrollingEducation) {
+    return;
+  }
+  viewModel.isEnrollingEducation = true;
+  render();
+  runGameAction((state) => enrollEducationProgram(state, programId), { preserveScroll: true });
+  viewModel.isEnrollingEducation = false;
+  render();
+}
+
 function clearCrateOpenTimers() {
   for (const timerId of viewModel.crateOpenTimers) {
     window.clearTimeout(timerId);
@@ -377,4 +499,17 @@ function formatOfflineDuration(totalSeconds) {
     return `${hours}h ${minutes}m`;
   }
   return `${minutes}m`;
+}
+
+function refreshDailyQuestsIfNeeded() {
+  if (!viewModel.state) {
+    return;
+  }
+  const result = ensureDailyQuests(viewModel.state);
+  if (!result.rolled) {
+    return;
+  }
+  viewModel.notice = "New daily quests are available.";
+  persist("Saved daily quests");
+  render();
 }

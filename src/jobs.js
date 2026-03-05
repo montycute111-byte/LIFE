@@ -1,5 +1,8 @@
 import { getCrateBoostMultipliers, getInstantJobTokenCount, maybeAwardCrate } from "./crates.js";
+import { getEducationMultipliers, getEducationProgram, isEducationCompleted } from "./education.js";
 import { pushLog } from "./gameState.js";
+import { getPowerItemMultipliers } from "./powerItems.js";
+import { trackQuestEvent } from "./quests/questEngine.js";
 import { getResidenceModifiers } from "./realEstate.js";
 import { awardXp, getPlayerEffects, processStoreTimers } from "./store.js";
 
@@ -149,6 +152,69 @@ export const JOBS = [
     payout: 108000,
     xp: 7600,
     levelRequired: 85
+  },
+  {
+    id: "hs_fintech_capstone",
+    name: "HS FinTech Capstone Desk",
+    durationMs: 2520 * 1000,
+    payout: 185000,
+    xp: 8600,
+    levelRequired: 95,
+    educationRequired: "hs"
+  },
+  {
+    id: "alumni_private_ledger",
+    name: "Alumni Private Ledger Ops",
+    durationMs: 3000 * 1000,
+    payout: 295000,
+    xp: 10400,
+    levelRequired: 108,
+    educationRequired: "hs"
+  },
+  {
+    id: "academy_global_settlement",
+    name: "Academy Global Settlement",
+    durationMs: 3540 * 1000,
+    payout: 460000,
+    xp: 12500,
+    levelRequired: 122,
+    educationRequired: "hs"
+  },
+  {
+    id: "college_quant_arbitrage",
+    name: "College Quant Arbitrage",
+    durationMs: 4200 * 1000,
+    payout: 760000,
+    xp: 15200,
+    levelRequired: 150,
+    educationRequired: "college"
+  },
+  {
+    id: "doctoral_sovereign_engine",
+    name: "Doctoral Sovereign Yield Engine",
+    durationMs: 4920 * 1000,
+    payout: 1180000,
+    xp: 18600,
+    levelRequired: 170,
+    educationRequired: "college"
+  },
+  {
+    id: "ivy_fusion_derivatives",
+    name: "Ivy Fusion Derivatives Desk",
+    durationMs: 5760 * 1000,
+    payout: 1820000,
+    xp: 22600,
+    levelRequired: 192,
+    educationRequired: "college"
+  },
+  {
+    id: "interstellar_endowment",
+    name: "Interstellar Endowment Command",
+    durationMs: 6720 * 1000,
+    payout: 2740000,
+    xp: 27200,
+    levelRequired: 220,
+    educationRequired: "college"
   }
 ];
 
@@ -179,6 +245,12 @@ export function canStartJob(state, jobId, now = Date.now()) {
       message: `Unlocks at level ${job.levelRequired}.`
     };
   }
+  if (job.educationRequired && !isEducationCompleted(state, job.educationRequired)) {
+    return {
+      ok: false,
+      message: `Requires completed ${getEducationRequirementLabel(job.educationRequired)}.`
+    };
+  }
   if (state.activeJobs.length >= effects.maxActiveJobs) {
     return {
       ok: false,
@@ -193,6 +265,10 @@ export function canStartJob(state, jobId, now = Date.now()) {
   };
 }
 
+function getEducationRequirementLabel(programId) {
+  return getEducationProgram(programId)?.name || "education program";
+}
+
 export function startJob(state, jobId, now = Date.now()) {
   const result = canStartJob(state, jobId, now);
   if (!result.ok) {
@@ -202,7 +278,11 @@ export function startJob(state, jobId, now = Date.now()) {
   const { job, effects } = result;
   const streakBonus = Math.min(state.streak.count * 0.05, 0.35);
   const crateBoosts = getCrateBoostMultipliers(state, now);
-  const durationMs = Math.max(5 * 1000, Math.round(job.durationMs * effects.durationMultiplier));
+  const powerMultipliers = getPowerItemMultipliers(state, now);
+  const durationMs = Math.max(
+    5 * 1000,
+    Math.round(job.durationMs * effects.durationMultiplier * Math.max(0, Number(powerMultipliers.jobTimeMult || 1)))
+  );
   const payout = Math.round(
     job.payout
     * effects.payoutMultiplier
@@ -272,6 +352,8 @@ export function claimReadyJobs(state, now = Date.now()) {
 
   const effects = getPlayerEffects(state, now);
   const residenceModifiers = getResidenceModifiers(state);
+  const educationMultipliers = getEducationMultipliers(state);
+  const powerMultipliers = getPowerItemMultipliers(state, now);
   const crateDrops = {
     common: 0,
     rare: 0,
@@ -284,7 +366,13 @@ export function claimReadyJobs(state, now = Date.now()) {
   for (const job of readyJobs) {
     const luckyDouble = effects.luckyDoubleChance > 0 && Math.random() < effects.luckyDoubleChance;
     const baseCash = luckyDouble ? job.payout * 2 : job.payout;
-    totalCash += Math.round(baseCash * Math.max(0, Number(residenceModifiers.jobPayoutMult || 1)));
+    totalCash += Math.round(
+      baseCash
+      * Math.max(0, Number(residenceModifiers.jobPayoutMult || 1))
+      // Education is applied at payout finalization only.
+      * Math.max(0, Number(educationMultipliers.jobMultiplier || 1))
+      * Math.max(0, Number(powerMultipliers.jobPayoutMult || 1))
+    );
 
     const baseXp = Math.max(1, Math.round(job.xp * JOB_XP_CLAIM_MULTIPLIER));
     totalXp += Math.max(1, Math.round(baseXp * Math.max(0, Number(residenceModifiers.jobXpMult || 1))));
@@ -309,6 +397,7 @@ export function claimReadyJobs(state, now = Date.now()) {
   state.streak.windowEndsAt = now + effects.streakWindowMs;
 
   const levelsGained = awardXp(state, totalXp, now);
+  trackQuestEvent(state, "JOB_COMPLETE", { count: readyJobs.length, amount: totalCash });
   pushLog(state, `Claimed ${readyJobs.length} job(s): +$${totalCash} and +${totalXp} XP.`, now);
   const totalDrops = crateDrops.common + crateDrops.rare + crateDrops.epic + crateDrops.legendary;
   if (totalDrops > 0) {
@@ -362,9 +451,16 @@ export function useInstantJobToken(state, activeJobId, now = Date.now()) {
 
   const effects = getPlayerEffects(state, now);
   const residenceModifiers = getResidenceModifiers(state);
+  const educationMultipliers = getEducationMultipliers(state);
+  const powerMultipliers = getPowerItemMultipliers(state, now);
   const luckyDouble = effects.luckyDoubleChance > 0 && Math.random() < effects.luckyDoubleChance;
   const baseCash = luckyDouble ? job.payout * 2 : job.payout;
-  const totalCash = Math.round(baseCash * Math.max(0, Number(residenceModifiers.jobPayoutMult || 1)));
+  const totalCash = Math.round(
+    baseCash
+    * Math.max(0, Number(residenceModifiers.jobPayoutMult || 1))
+    * Math.max(0, Number(educationMultipliers.jobMultiplier || 1))
+    * Math.max(0, Number(powerMultipliers.jobPayoutMult || 1))
+  );
   const baseXp = Math.max(1, Math.round(job.xp * JOB_XP_CLAIM_MULTIPLIER));
   const totalXp = Math.max(1, Math.round(baseXp * Math.max(0, Number(residenceModifiers.jobXpMult || 1))));
 
@@ -382,6 +478,7 @@ export function useInstantJobToken(state, activeJobId, now = Date.now()) {
 
   const levelsGained = awardXp(state, totalXp, now);
   const drop = maybeAwardCrate(state, "jobComplete", now);
+  trackQuestEvent(state, "JOB_COMPLETE", { count: 1, amount: totalCash });
   pushLog(state, `Used token on ${job.name}: +$${totalCash}, +${totalXp} XP.`, now);
   if (drop?.rarity) {
     pushLog(state, `Token completion crate drop: ${drop.rarity}.`, now);

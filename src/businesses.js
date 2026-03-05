@@ -1,4 +1,6 @@
 import { getCrateBoostMultipliers } from "./crates.js";
+import { getEducationMultipliers, getEducationProgram, isEducationCompleted } from "./education.js";
+import { getPowerItemMultipliers } from "./powerItems.js";
 import { getResidenceModifiers } from "./realEstate.js";
 import { getRebirthRuntimeModifiers } from "./rebirth.js";
 
@@ -178,6 +180,61 @@ export const BUSINESS_DEFS = [
     baseIncomePerSec: 115000000000,
     incomeGrowthPerLevel: 1.17,
     description: "Late-game mega-corp at cosmic scale."
+  },
+  {
+    id: "hs_research_park",
+    name: "HS Research Parks",
+    unlockLevel: 96,
+    educationRequired: "hs",
+    baseCost: 14000000000000,
+    costGrowth: 1.245,
+    baseIncomePerSec: 4100000000,
+    incomeGrowthPerLevel: 1.16,
+    description: "Education-gated research campuses with premium contracts."
+  },
+  {
+    id: "diploma_capital_group",
+    name: "Diploma Capital Group",
+    unlockLevel: 118,
+    educationRequired: "hs",
+    baseCost: 92000000000000,
+    costGrowth: 1.25,
+    baseIncomePerSec: 14200000000,
+    incomeGrowthPerLevel: 1.165,
+    description: "Large-scale alumni finance operations."
+  },
+  {
+    id: "college_endowment_fund",
+    name: "College Endowment Funds",
+    unlockLevel: 152,
+    educationRequired: "college",
+    baseCost: 820000000000000,
+    costGrowth: 1.255,
+    baseIncomePerSec: 62000000000,
+    incomeGrowthPerLevel: 1.17,
+    description: "University-backed funds with elite returns."
+  },
+  {
+    id: "doctorate_ai_labs",
+    name: "Doctorate AI Labs",
+    unlockLevel: 182,
+    educationRequired: "college",
+    baseCost: 6200000000000000,
+    costGrowth: 1.26,
+    baseIncomePerSec: 235000000000,
+    incomeGrowthPerLevel: 1.175,
+    description: "Cutting-edge labs generating extreme passive profit."
+  },
+  {
+    id: "interstellar_grant_network",
+    name: "Interstellar Grant Network",
+    unlockLevel: 225,
+    educationRequired: "college",
+    baseCost: 51000000000000000,
+    costGrowth: 1.265,
+    baseIncomePerSec: 890000000000,
+    incomeGrowthPerLevel: 1.18,
+    description: "Highest-tier education enterprise with cosmic funding."
   }
 ];
 
@@ -241,12 +298,16 @@ export function getBusinessState(state, businessId) {
   };
 }
 
-export function getNextUnitCost(definition, qtyOwned) {
-  return Math.max(1, Math.round(definition.baseCost * (definition.costGrowth ** Math.max(0, qtyOwned))));
+export function getNextUnitCost(definition, qtyOwned, state = null, now = Date.now()) {
+  const powerMultipliers = state ? getPowerItemMultipliers(state, now) : null;
+  const costMult = Math.max(0, Number(powerMultipliers?.costMult || 1));
+  return Math.max(1, Math.round(definition.baseCost * (definition.costGrowth ** Math.max(0, qtyOwned)) * costMult));
 }
 
-export function getUpgradeCost(definition, level) {
-  return Math.max(1, Math.round((definition.baseCost * 10) * (1.25 ** Math.max(0, level - 1))));
+export function getUpgradeCost(definition, level, state = null, now = Date.now()) {
+  const powerMultipliers = state ? getPowerItemMultipliers(state, now) : null;
+  const costMult = Math.max(0, Number(powerMultipliers?.costMult || 1));
+  return Math.max(1, Math.round((definition.baseCost * 10) * (1.25 ** Math.max(0, level - 1)) * costMult));
 }
 
 export function getBusinessIncomePerSec(definition, businessState) {
@@ -266,10 +327,15 @@ export function getTotalPassivePerSec(state) {
   const businessIncomeMult = Math.max(0, Number(residenceModifiers.businessIncomeMult || 1));
   const rebirthModifiers = getRebirthRuntimeModifiers(state);
   const crateMultipliers = getCrateBoostMultipliers(state);
+  const educationMultipliers = getEducationMultipliers(state);
+  const powerMultipliers = getPowerItemMultipliers(state);
   return total
     * businessIncomeMult
     * Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1))
-    * Math.max(0, Number(crateMultipliers.businessPayoutMultiplier || 1));
+    * Math.max(0, Number(crateMultipliers.businessPayoutMultiplier || 1))
+    // Education is applied as a tiny final-step multiplier to avoid refactoring core formulas.
+    * Math.max(0, Number(educationMultipliers.businessMultiplier || 1))
+    * Math.max(0, Number(powerMultipliers.bizPayoutMult || 1));
 }
 
 export function getPassiveIntervalSeconds(state) {
@@ -320,7 +386,7 @@ export function getBusinessPurchasePreview(state, businessId) {
   const businessState = getBusinessState(state, businessId);
   const mode = state.businesses.buyMultiplier;
   const availableMoney = Number(state.money || 0);
-  return buildPurchasePlan(definition, businessState.qty, availableMoney, mode);
+  return buildPurchasePlan(definition, businessState.qty, availableMoney, mode, state);
 }
 
 export function buyBusinessUnits(state, businessId) {
@@ -338,13 +404,20 @@ export function buyBusinessUnits(state, businessId) {
       message: `Unlocks at level ${definition.unlockLevel}.`
     };
   }
+  if (definition.educationRequired && !isEducationCompleted(state, definition.educationRequired)) {
+    return {
+      ok: false,
+      message: `Requires completed ${getEducationRequirementLabel(definition.educationRequired)}.`
+    };
+  }
 
   const businessState = getBusinessState(state, businessId);
   const plan = buildPurchasePlan(
     definition,
     businessState.qty,
     Number(state.money || 0),
-    state.businesses.buyMultiplier
+    state.businesses.buyMultiplier,
+    state
   );
 
   if (plan.qty < 1 || plan.cost > Number(state.money || 0)) {
@@ -382,6 +455,12 @@ export function upgradeBusiness(state, businessId) {
       message: `Unlocks at level ${definition.unlockLevel}.`
     };
   }
+  if (definition.educationRequired && !isEducationCompleted(state, definition.educationRequired)) {
+    return {
+      ok: false,
+      message: `Requires completed ${getEducationRequirementLabel(definition.educationRequired)}.`
+    };
+  }
 
   const businessState = getBusinessState(state, businessId);
   if (businessState.qty < 1) {
@@ -391,7 +470,7 @@ export function upgradeBusiness(state, businessId) {
     };
   }
 
-  const upgradeCost = getUpgradeCost(definition, businessState.level);
+  const upgradeCost = getUpgradeCost(definition, businessState.level, state);
   if (Number(state.money || 0) < upgradeCost) {
     return {
       ok: false,
@@ -474,7 +553,7 @@ export function grantOfflineEarnings(state, now = Date.now()) {
   };
 }
 
-function buildPurchasePlan(definition, qtyOwned, money, mode) {
+function buildPurchasePlan(definition, qtyOwned, money, mode, state = null) {
   const maxCount = mode === "max"
     ? MAX_BUY_ITERATIONS
     : (mode === 10 ? 10 : 1);
@@ -485,7 +564,7 @@ function buildPurchasePlan(definition, qtyOwned, money, mode) {
   let remaining = Math.max(0, Number(money || 0));
 
   for (let i = 0; i < maxCount; i += 1) {
-    const cost = getNextUnitCost(definition, nextQty);
+    const cost = getNextUnitCost(definition, nextQty, state);
     if (remaining < cost) {
       break;
     }
@@ -498,7 +577,7 @@ function buildPurchasePlan(definition, qtyOwned, money, mode) {
   return {
     qty,
     cost: totalCost,
-    nextUnitCost: getNextUnitCost(definition, qtyOwned)
+    nextUnitCost: getNextUnitCost(definition, qtyOwned, state)
   };
 }
 
@@ -512,4 +591,8 @@ function getTotalUpgradeLevels(state) {
     total += Math.max(0, businessState.level - 1);
   }
   return total;
+}
+
+function getEducationRequirementLabel(programId) {
+  return getEducationProgram(programId)?.name || "education program";
 }

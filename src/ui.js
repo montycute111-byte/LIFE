@@ -9,8 +9,15 @@ import {
   getUpgradeCost
 } from "./businesses.js";
 import { getInstantJobTokenCount, nowMs } from "./crates.js";
+import { getEducationProgram, isEducationCompleted } from "./education.js";
 import { xpRequiredForLevel } from "./gameState.js";
 import { JOBS } from "./jobs.js";
+import {
+  getActivePowerItem,
+  getPowerItemPrice,
+  POWER_ITEMS,
+  POWER_ITEMS_UNLOCK_LEVEL
+} from "./powerItems.js";
 import {
   RESIDENCE_DEFS,
   formatResidencePerk,
@@ -37,6 +44,7 @@ import {
   getStoreItemPrice,
   getMaxActiveAbilitySlots
 } from "./store.js";
+import { QUESTS_BY_ID } from "./quests/questDefinitions.js";
 
 export function renderApp(root, viewModel, handlers) {
   if (!root) {
@@ -100,9 +108,11 @@ function renderGame(viewModel) {
           <button class="tab-btn ${activeTab === "jobs" ? "active" : ""}" data-action="tab" data-tab="jobs">All Jobs</button>
           <button class="tab-btn ${activeTab === "businesses" ? "active" : ""}" data-action="tab" data-tab="businesses">Businesses</button>
           <button class="tab-btn ${activeTab === "crates" ? "active" : ""}" data-action="tab" data-tab="crates">Crates</button>
+          <button class="tab-btn ${activeTab === "education" ? "active" : ""}" data-action="tab" data-tab="education">Education</button>
+          <button class="tab-btn ${activeTab === "quests" ? "active" : ""}" data-action="tab" data-tab="quests">Quests</button>
           <button class="tab-btn ${activeTab === "rebirth" ? "active" : ""}" data-action="tab" data-tab="rebirth">Rebirth</button>
           <button class="tab-btn ${activeTab === "realestate" ? "active" : ""}" data-action="tab" data-tab="realestate">Real Estate</button>
-          <button class="tab-btn ${activeTab === "store" ? "active" : ""}" data-action="tab" data-tab="store">Store</button>
+          <button class="tab-btn ${activeTab === "store" || activeTab === "poweritems" ? "active" : ""}" data-action="tab" data-tab="store">Store</button>
           <button class="tab-btn ${activeTab === "orders" ? "active" : ""}" data-action="tab" data-tab="orders">Track Orders</button>
           <button class="tab-btn ${activeTab === "inventory" ? "active" : ""}" data-action="tab" data-tab="inventory">Inventory</button>
         </div>
@@ -116,7 +126,11 @@ function renderGame(viewModel) {
 function renderActiveTab(state, effects, now, viewModel) {
   const activeTab = state?.settings?.activeTab || "dashboard";
   if (activeTab === "store") {
-    return renderStoreTab(state);
+    return renderStoreTab(state, now);
+  }
+  // Backward compatibility for saves that previously used a top-level power items tab.
+  if (activeTab === "poweritems") {
+    return renderStoreTab(state, now, "power");
   }
   if (activeTab === "orders") {
     return renderOrdersTab(state, now);
@@ -132,6 +146,12 @@ function renderActiveTab(state, effects, now, viewModel) {
   }
   if (activeTab === "crates") {
     return renderCratesTab(state, viewModel);
+  }
+  if (activeTab === "education") {
+    return renderEducationTab(state, viewModel, now);
+  }
+  if (activeTab === "quests") {
+    return renderQuestsTab(state);
   }
   if (activeTab === "rebirth") {
     return renderRebirthTab(state);
@@ -415,7 +435,170 @@ function renderCratesTab(state, viewModel) {
   `;
 }
 
-function renderStoreTab(state) {
+function renderEducationTab(state, viewModel, now) {
+  const education = state?.education && typeof state.education === "object"
+    ? state.education
+    : {
+        hs: { status: "not_started", startedAt: null, endsAt: null },
+        college: { status: "not_started", startedAt: null, endsAt: null },
+        activeProgram: null
+      };
+  const perks = state?.educationPerks && typeof state.educationPerks === "object"
+    ? state.educationPerks
+    : { jobMultiplier: 1, businessMultiplier: 1 };
+  const isEnrolling = Boolean(viewModel?.isEnrollingEducation);
+
+  return `
+    <section class="grid two">
+      ${renderEducationProgramCard(state, education, "hs", now, isEnrolling)}
+      ${renderEducationProgramCard(state, education, "college", now, isEnrolling)}
+      <article class="card">
+        <h2>Education Perks</h2>
+        <div class="list compact-list">
+          <div class="job-row">
+            <div class="row-head">
+              <strong>Job Payout Multiplier</strong>
+              <span class="rarity-pill rare">x${Number(perks.jobMultiplier || 1).toFixed(2)}</span>
+            </div>
+            <div class="row-meta">High School completion grants at least x1.10.</div>
+          </div>
+          <div class="job-row">
+            <div class="row-head">
+              <strong>Business Payout Multiplier</strong>
+              <span class="rarity-pill epic">x${Number(perks.businessMultiplier || 1).toFixed(2)}</span>
+            </div>
+            <div class="row-meta">College completion grants at least x1.15.</div>
+          </div>
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderEducationProgramCard(state, education, programId, now, isEnrolling) {
+  const program = getEducationProgram(programId);
+  const slot = education?.[programId] && typeof education[programId] === "object"
+    ? education[programId]
+    : { status: "not_started", startedAt: null, endsAt: null };
+  const activeProgram = education?.activeProgram || null;
+  const isCompleted = slot.status === "completed";
+  const isCurrent = activeProgram === programId;
+  const inProgress = slot.status === "in_progress" && isCurrent;
+  const blockedByOther = activeProgram && activeProgram !== programId;
+  const remainingMs = inProgress ? Math.max(0, Number(slot.endsAt || 0) - now) : 0;
+  const totalMs = Number(program?.durationMs || 1);
+  const elapsedMs = inProgress ? Math.max(0, totalMs - remainingMs) : 0;
+  const progress = inProgress ? Math.min(100, (elapsedMs / Math.max(1, totalMs)) * 100) : (isCompleted ? 100 : 0);
+  const meetsLevel = Number(state.level || 0) >= Number(program?.levelReq || 0);
+  const hasMoney = Number(state.money || 0) >= Number(program?.cost || 0);
+  const disabled = isEnrolling || isCompleted || inProgress || blockedByOther || !meetsLevel || !hasMoney;
+  const label = isCompleted ? "Completed" : (inProgress ? "In Class..." : "Enroll");
+  const statusLabel = isCompleted ? "Completed" : (inProgress ? "In progress" : "Not started");
+
+  return `
+    <article class="card">
+      <h2>${escapeHtml(program?.name || "Program")}</h2>
+      <div class="list compact-list">
+        <div class="job-row">
+          <div class="row-head">
+            <strong>Status</strong>
+            <span class="badge ${isCompleted ? "delivered" : "processing"}">${statusLabel}</span>
+          </div>
+          <div class="row-meta">Requirement: Level ${formatNumber(program?.levelReq || 0)} | Cost: $${formatNumber(program?.cost || 0)}</div>
+          <div class="row-meta">Duration: ${formatCountdown(program?.durationMs || 0)}</div>
+          ${inProgress ? `<div class="row-meta">Time remaining: ${formatCountdown(remainingMs)}</div>` : ""}
+          <div class="progress-wrap"><div class="progress-bar" style="width: ${progress}%"></div></div>
+          ${blockedByOther ? '<div class="row-meta">Another program is currently active.</div>' : ""}
+          ${!meetsLevel ? `<div class="row-meta">Need level ${formatNumber(program?.levelReq || 0)}.</div>` : ""}
+          ${meetsLevel && !hasMoney && !isCompleted ? `<div class="row-meta">Need $${formatNumber(program?.cost || 0)} to enroll.</div>` : ""}
+        </div>
+      </div>
+      <button
+        class="btn secondary"
+        data-action="enroll-education"
+        data-id="${programId}"
+        ${disabled ? "disabled" : ""}
+      >
+        ${label}
+      </button>
+    </article>
+  `;
+}
+
+function renderQuestsTab(state) {
+  const questsState = state?.quests && typeof state.quests === "object"
+    ? state.quests
+    : { daily_ids: [], progress: {}, completed: {}, claimed: {}, last_roll_date: "" };
+  const dailyIds = Array.isArray(questsState.daily_ids) ? questsState.daily_ids : [];
+
+  return `
+    <section class="card">
+      <h2>Daily Quests</h2>
+      <p class="hint">Date: ${escapeHtml(questsState.last_roll_date || "today")} | Complete and claim each quest once.</p>
+      <div class="list">
+        ${dailyIds.length
+          ? dailyIds.map((questId) => {
+            const quest = QUESTS_BY_ID[questId];
+            if (!quest) {
+              return "";
+            }
+            const current = Math.max(0, Number(questsState.progress?.[questId] || 0));
+            const target = Math.max(1, Number(quest.requirement?.target || 1));
+            const claimed = Boolean(questsState.claimed?.[questId]);
+            const completed = Boolean(questsState.completed?.[questId]);
+            const shown = Math.min(current, target);
+            const progressPercent = Math.max(0, Math.min(100, (shown / target) * 100));
+            const status = claimed ? "Claimed" : (completed ? "Completed" : "In progress");
+            const statusClass = claimed ? "delivered" : (completed ? "out_for_delivery" : "processing");
+            const rewardCash = Math.max(0, Number(quest.reward?.cash || 0));
+            const rewardXp = Math.max(0, Number(quest.reward?.xp || 0));
+
+            return `
+              <div class="item-row">
+                <div class="row-head">
+                  <strong>${escapeHtml(quest.title)}</strong>
+                  <span class="badge ${statusClass}">${status}</span>
+                </div>
+                <div class="row-meta">${escapeHtml(quest.desc)}</div>
+                <div class="row-meta">Progress: ${formatNumber(shown)} / ${formatNumber(target)}</div>
+                <div class="progress-wrap"><div class="progress-bar" style="width: ${progressPercent}%"></div></div>
+                <div class="row-meta">Reward: $${formatNumber(rewardCash)}${rewardXp > 0 ? ` + ${formatNumber(rewardXp)} XP` : ""}</div>
+                <button
+                  class="btn secondary"
+                  data-action="claim-quest"
+                  data-id="${quest.id}"
+                  ${(completed && !claimed) ? "" : "disabled"}
+                >
+                  Claim
+                </button>
+              </div>
+            `;
+          }).join("")
+          : '<p class="hint empty-state">No quests rolled yet.</p>'}
+      </div>
+    </section>
+  `;
+}
+
+function renderStoreTab(state, now, forcedStoreTab = null) {
+  const currentStoreTab = forcedStoreTab || getStoreSubTab(state);
+  return `
+    <section class="section-stack">
+      <article class="card">
+        <div class="row-head">
+          <h2>Store</h2>
+        </div>
+        <div class="top-actions tab-strip">
+          <button class="tab-btn ${currentStoreTab === "items" ? "active" : ""}" data-action="store-tab" data-tab="items">Items</button>
+          <button class="tab-btn ${currentStoreTab === "power" ? "active" : ""}" data-action="store-tab" data-tab="power">Power Items</button>
+        </div>
+      </article>
+      ${currentStoreTab === "power" ? renderPowerItemsTab(state, now) : renderStoreItemsTabContent(state)}
+    </section>
+  `;
+}
+
+function renderStoreItemsTabContent(state) {
   return `
     <section class="grid two">
       <article class="card">
@@ -464,19 +647,111 @@ function renderStoreTab(state) {
   `;
 }
 
+function renderPowerItemsTab(state, now) {
+  const unlocked = Number(state?.level || 0) >= POWER_ITEMS_UNLOCK_LEVEL;
+  const active = getActivePowerItem(state, now);
+  const remainingMs = Math.max(0, Number(active?.remainingMs || 0));
+  const activeDuration = Math.max(1, Number(active?.item?.durationMs || 0));
+  const activeProgress = active ? Math.max(0, Math.min(100, ((activeDuration - remainingMs) / activeDuration) * 100)) : 0;
+  const owned = state?.powerItems?.owned && typeof state.powerItems.owned === "object" ? state.powerItems.owned : {};
+
+  return `
+    <section class="grid two">
+      <article class="card">
+        <h2>Power Store</h2>
+        <div class="list">
+          ${POWER_ITEMS.map((item) => {
+            const price = getPowerItemPrice(state, item.id, now);
+            const qty = Math.max(0, Number(owned[item.id] || 0));
+            const canBuy = unlocked && Number(state.money || 0) >= price;
+            const canActivate = unlocked && qty > 0;
+            return `
+              <div class="item-row ${unlocked ? "" : "business-tile locked"}">
+                <div class="row-head">
+                  <strong>${escapeHtml(item.name)}</strong>
+                  <span class="rarity-pill legendary">$${formatNumber(price)}</span>
+                </div>
+                <div class="row-meta">${escapeHtml(item.description)}</div>
+                <div class="row-meta">Duration: 15 hours</div>
+                <div class="row-meta">Owned: ${formatNumber(qty)}</div>
+                ${!unlocked ? `<div class="row-meta">Unlocks at level ${POWER_ITEMS_UNLOCK_LEVEL}</div>` : ""}
+                <div class="top-actions">
+                  <button class="btn secondary" data-action="buy-power-item" data-id="${item.id}" ${canBuy ? "" : "disabled"}>Buy</button>
+                  <button class="btn" data-action="activate-power-item" data-id="${item.id}" ${canActivate ? "" : "disabled"}>Activate</button>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Power Items</h2>
+        <p class="hint">${unlocked ? "Unlocked. Only one Power Item can be active at a time." : `Reach level ${POWER_ITEMS_UNLOCK_LEVEL} to unlock Power Items.`}</p>
+        <div class="list compact-list">
+          <div class="job-row">
+            <div class="row-head">
+              <strong>Status</strong>
+              <span class="badge ${unlocked ? "delivered" : "processing"}">${unlocked ? "Unlocked" : "Locked"}</span>
+            </div>
+            <div class="row-meta">Level: ${formatNumber(state.level)} / ${POWER_ITEMS_UNLOCK_LEVEL}</div>
+          </div>
+          <div class="job-row">
+            <div class="row-head">
+              <strong>Active Power Item</strong>
+              <span class="rarity-pill ${active ? "legendary" : "common"}">${active ? escapeHtml(active.item.name) : "None"}</span>
+            </div>
+            <div class="row-meta">${active ? escapeHtml(active.item.description) : "No active power boost."}</div>
+            ${active
+              ? `
+                <div class="progress-wrap"><div class="progress-bar" style="width: ${activeProgress}%"></div></div>
+                <div class="row-meta">Time remaining: ${formatCountdown(remainingMs)}</div>
+              `
+              : ""}
+          </div>
+        </div>
+      </article>
+    </section>
+  `;
+}
+
 function renderAllJobsTab(state, effects) {
+  const jobsSubTab = getJobsSubTab(state);
+  const visibleJobs = JOBS.filter((job) => {
+    if (jobsSubTab === "hs") {
+      return job.educationRequired === "hs";
+    }
+    if (jobsSubTab === "college") {
+      return job.educationRequired === "college";
+    }
+    return !job.educationRequired;
+  });
+
   return `
     <section class="card">
       <h2>All Jobs</h2>
+      <div class="top-actions tab-strip">
+        <button class="tab-btn ${jobsSubTab === "core" ? "active" : ""}" data-action="jobs-subtab" data-tab="core">Core</button>
+        <button class="tab-btn ${jobsSubTab === "hs" ? "active" : ""}" data-action="jobs-subtab" data-tab="hs">High School</button>
+        <button class="tab-btn ${jobsSubTab === "college" ? "active" : ""}" data-action="jobs-subtab" data-tab="college">College</button>
+      </div>
       <p class="hint">Full catalog of every unlocked and locked job tier.</p>
       <div class="list">
-        ${JOBS.map((job) => {
-          const locked = state.level < job.levelRequired;
+        ${visibleJobs.length
+          ? visibleJobs.map((job) => {
+          const levelLocked = state.level < job.levelRequired;
+          const educationLocked = Boolean(job.educationRequired) && !isEducationCompleted(state, job.educationRequired);
+          const locked = levelLocked || educationLocked;
           const slotsFull = state.activeJobs.length >= effects.maxActiveJobs;
           const buttonDisabled = locked || slotsFull;
-          const buttonLabel = locked
-            ? `Unlock at ${job.levelRequired}`
-            : (slotsFull ? "Slots Full" : "Fill Slots");
+          const buttonLabel = educationLocked
+            ? `Requires ${getEducationShortLabel(job.educationRequired)}`
+            : (levelLocked
+              ? `Unlock at ${job.levelRequired}`
+              : (slotsFull ? "Slots Full" : "Fill Slots"));
+          const educationLabel = job.educationRequired
+            ? `Education: ${escapeHtml(getEducationRequirementName(job.educationRequired))}`
+            : "";
           return `
             <div class="item-row">
               <div class="row-head">
@@ -485,56 +760,99 @@ function renderAllJobsTab(state, effects) {
               </div>
               <div class="row-meta">Payout: $${formatNumber(job.payout)} | XP: ${job.xp}</div>
               <div class="row-meta">Duration: ${formatCountdown(job.durationMs)}</div>
+              ${educationLabel ? `<div class="row-meta">${educationLabel}</div>` : ""}
               <button class="btn" data-action="start-job" data-id="${job.id}" ${buttonDisabled ? "disabled" : ""}>${buttonLabel}</button>
             </div>
           `;
-        }).join("")}
+        }).join("")
+          : '<p class="hint empty-state">No jobs in this category.</p>'}
       </div>
     </section>
   `;
 }
 
 function renderBusinessesTab(state, now) {
+  const businessesSubTab = getBusinessesSubTab(state);
   const buyMode = state?.businesses?.buyMultiplier === 10 || state?.businesses?.buyMultiplier === "max"
     ? state.businesses.buyMultiplier
     : 1;
   const totalPayoutPerCycle = getTotalPassivePayoutPerCycle(state);
   const payoutIntervalSeconds = getPassiveIntervalSeconds(state);
   const cycle = getPassiveCycleProgress(state, now);
+  const visibleBusinesses = BUSINESS_DEFS.filter((definition) => {
+    if (businessesSubTab === "hs") {
+      return definition.educationRequired === "hs";
+    }
+    if (businessesSubTab === "college") {
+      return definition.educationRequired === "college";
+    }
+    return !definition.educationRequired;
+  });
 
   return `
     <section class="section-stack">
-      <article class="card">
+      <article class="card business-controls-card">
         <h2>Businesses</h2>
-        <div class="stats-line">
-          <span>Total passive income: <strong>$${formatNumber(totalPayoutPerCycle)} per payout</strong></span>
-          <span>Payout interval: <strong>${formatCountdown(payoutIntervalSeconds * 1000)}</strong></span>
+        <div class="business-controls-grid">
+          <div class="business-controls-block">
+            <p class="hint business-controls-label">Category</p>
+            <div class="business-filter-tabs">
+              <button class="tab-btn ${businessesSubTab === "core" ? "active" : ""}" data-action="business-subtab" data-tab="core">Core</button>
+              <button class="tab-btn ${businessesSubTab === "hs" ? "active" : ""}" data-action="business-subtab" data-tab="hs">High School</button>
+              <button class="tab-btn ${businessesSubTab === "college" ? "active" : ""}" data-action="business-subtab" data-tab="college">College</button>
+            </div>
+          </div>
+          <div class="business-controls-block">
+            <p class="hint business-controls-label">Buy mode</p>
+            <div class="business-buy-tabs">
+              <button class="btn secondary ${buyMode === 1 ? "active-mode" : ""}" data-action="business-buy-mode" data-mode="1">Buy x1</button>
+              <button class="btn secondary ${buyMode === 10 ? "active-mode" : ""}" data-action="business-buy-mode" data-mode="10">Buy x10</button>
+              <button class="btn secondary ${buyMode === "max" ? "active-mode" : ""}" data-action="business-buy-mode" data-mode="max">Buy Max</button>
+            </div>
+          </div>
         </div>
-        <div class="top-actions">
-          <button class="btn secondary ${buyMode === 1 ? "active-mode" : ""}" data-action="business-buy-mode" data-mode="1">Buy x1</button>
-          <button class="btn secondary ${buyMode === 10 ? "active-mode" : ""}" data-action="business-buy-mode" data-mode="10">Buy x10</button>
-          <button class="btn secondary ${buyMode === "max" ? "active-mode" : ""}" data-action="business-buy-mode" data-mode="max">Buy Max</button>
+        <div class="business-stats-grid">
+          <div class="business-stat-chip">
+            <span>Total passive income</span>
+            <strong>$${formatNumber(totalPayoutPerCycle)} per payout</strong>
+          </div>
+          <div class="business-stat-chip">
+            <span>Payout interval</span>
+            <strong>${formatCountdown(payoutIntervalSeconds * 1000)}</strong>
+          </div>
         </div>
       </article>
 
       <article class="card">
-        <div class="list">
-          ${BUSINESS_DEFS.map((definition) => {
-            const locked = state.level < definition.unlockLevel;
+        <div class="list business-list">
+          ${visibleBusinesses.length
+            ? visibleBusinesses.map((definition) => {
+            const levelLocked = state.level < definition.unlockLevel;
+            const educationLocked = Boolean(definition.educationRequired)
+              && !isEducationCompleted(state, definition.educationRequired);
+            const locked = levelLocked || educationLocked;
             const businessState = getBusinessState(state, definition.id);
             const hasUnits = businessState.qty > 0;
             const incomePerSec = getBusinessIncomePerSec(definition, businessState);
+            const payoutPerCycle = Math.max(0, Math.round(incomePerSec * payoutIntervalSeconds));
             const preview = getBusinessPurchasePreview(state, definition.id);
             const plannedCost = preview.qty > 0 ? preview.cost : preview.nextUnitCost;
             const plannedQty = preview.qty > 0 ? preview.qty : (buyMode === 10 ? 10 : 1);
-            const upgradeCost = getUpgradeCost(definition, businessState.level);
+            const upgradeCost = getUpgradeCost(definition, businessState.level, state);
             const canUpgrade = !locked && businessState.qty > 0 && Number(state.money || 0) >= upgradeCost;
             const buyButtonLabel = buyMode === "max"
               ? `Buy Max (${preview.qty})`
               : `Buy x${plannedQty}`;
+            const lockNotes = [];
+            if (levelLocked) {
+              lockNotes.push(`Unlocks at Level ${definition.unlockLevel}`);
+            }
+            if (educationLocked) {
+              lockNotes.push(`Requires ${getEducationRequirementName(definition.educationRequired)}`);
+            }
 
             return `
-              <div class="item-row ${locked ? "business-tile locked" : "business-tile"}">
+              <div class="item-row business-card ${locked ? "business-tile locked" : "business-tile"}">
                 <div class="row-head">
                   <strong>${escapeHtml(definition.name)}</strong>
                   <span class="rarity-pill ${locked ? "common" : "uncommon"}">${locked ? `Lvl ${definition.unlockLevel}` : "Unlocked"}</span>
@@ -542,16 +860,14 @@ function renderBusinessesTab(state, now) {
                 <div class="row-meta">${escapeHtml(definition.description || "")}</div>
                 ${locked
                   ? `
-                    <div class="row-meta">Unlocks at Level ${definition.unlockLevel}</div>
+                    <div class="row-meta">${escapeHtml(lockNotes.join(" • ") || "Locked")}</div>
                     <div class="progress-wrap"><div class="progress-bar" style="width: 0%"></div></div>
-                    <div class="row-meta">Next payout in: --:--</div>
                   `
                   : `
-                    <div class="row-meta">Qty: ${formatNumber(businessState.qty)} | Level: ${formatNumber(businessState.level)}</div>
-                    <div class="row-meta">Payout/cycle: $${formatNumber(incomePerSec * payoutIntervalSeconds)} every ${formatCountdown(payoutIntervalSeconds * 1000)}</div>
+                    <div class="row-meta">Qty ${formatNumber(businessState.qty)} • Lvl ${formatNumber(businessState.level)} • Payout $${formatNumber(payoutPerCycle)}/cycle</div>
                     <div class="progress-wrap"><div class="progress-bar" style="width: ${(hasUnits ? cycle.progress : 0) * 100}%"></div></div>
-                    <div class="row-meta">${hasUnits ? `Next payout in: ${formatCountdown(cycle.remainingMs)}` : "Buy at least 1 unit to start passive income."}</div>
-                    <div class="row-meta">Next cost: $${formatNumber(plannedCost)}</div>
+                    <div class="row-meta">${hasUnits ? `Next payout ${formatCountdown(cycle.remainingMs)}` : "No units owned yet."}</div>
+                    <div class="row-meta">Next cost $${formatNumber(plannedCost)}</div>
                     <div class="top-actions">
                       <button class="btn" data-action="buy-business" data-id="${definition.id}" ${preview.qty < 1 ? "disabled" : ""}>${buyButtonLabel}</button>
                       <button class="btn secondary" data-action="upgrade-business" data-id="${definition.id}" ${canUpgrade ? "" : "disabled"}>Upgrade ($${formatNumber(upgradeCost)})</button>
@@ -559,7 +875,8 @@ function renderBusinessesTab(state, now) {
                   `}
               </div>
             `;
-          }).join("")}
+          }).join("")
+            : '<p class="hint empty-state">No businesses in this category.</p>'}
         </div>
       </article>
     </section>
@@ -767,11 +1084,20 @@ function bindEvents(root, viewModel, handlers) {
   root.querySelectorAll("[data-action='tab']").forEach((button) => {
     button.addEventListener("click", () => handlers.onSetTab(button.dataset.tab));
   });
+  root.querySelectorAll("[data-action='store-tab']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSetStoreTab(button.dataset.tab));
+  });
   root.querySelectorAll("[data-action='business-buy-mode']").forEach((button) => {
     button.addEventListener("click", () => {
       const mode = button.dataset.mode === "max" ? "max" : Number(button.dataset.mode);
       handlers.onSetBusinessBuyMode(mode);
     });
+  });
+  root.querySelectorAll("[data-action='business-subtab']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSetBusinessesSubTab(button.dataset.tab));
+  });
+  root.querySelectorAll("[data-action='jobs-subtab']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onSetJobsSubTab(button.dataset.tab));
   });
   root.querySelectorAll("[data-action='start-job']").forEach((button) => {
     button.addEventListener("click", () => handlers.onStartJob(button.dataset.id));
@@ -803,14 +1129,26 @@ function bindEvents(root, viewModel, handlers) {
   root.querySelectorAll("[data-action='activate-item']").forEach((button) => {
     button.addEventListener("click", () => handlers.onActivateInventoryItem(button.dataset.id));
   });
+  root.querySelectorAll("[data-action='buy-power-item']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onBuyPowerItem(button.dataset.id));
+  });
+  root.querySelectorAll("[data-action='activate-power-item']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onActivatePowerItem(button.dataset.id));
+  });
   root.querySelectorAll("[data-action='open-crate']").forEach((button) => {
     button.addEventListener("click", () => handlers.onOpenCrate(button.dataset.rarity));
+  });
+  root.querySelectorAll("[data-action='enroll-education']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onEnrollEducation(button.dataset.id));
   });
   root.querySelectorAll("[data-action='buy-rebirth-upgrade']").forEach((button) => {
     button.addEventListener("click", () => handlers.onBuyRebirthUpgrade(button.dataset.id));
   });
   root.querySelectorAll("[data-action='confirm-rebirth']").forEach((button) => {
     button.addEventListener("click", () => handlers.onConfirmRebirth());
+  });
+  root.querySelectorAll("[data-action='claim-quest']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onClaimQuest(button.dataset.id));
   });
 }
 
@@ -861,6 +1199,41 @@ function rarityForCrate(rarity) {
   if (rarity === "epic") return "epic";
   if (rarity === "rare") return "rare";
   return "common";
+}
+
+function getEducationRequirementName(programId) {
+  return getEducationProgram(programId)?.name || "Education requirement";
+}
+
+function getEducationShortLabel(programId) {
+  if (programId === "college") {
+    return "College";
+  }
+  if (programId === "hs") {
+    return "HS Diploma";
+  }
+  return "Education";
+}
+
+function getStoreSubTab(state) {
+  const tab = String(state?.settings?.storeSubTab || "items").toLowerCase();
+  return tab === "power" ? "power" : "items";
+}
+
+function getBusinessesSubTab(state) {
+  const tab = String(state?.settings?.businessesSubTab || "core").toLowerCase();
+  if (tab === "hs" || tab === "college") {
+    return tab;
+  }
+  return "core";
+}
+
+function getJobsSubTab(state) {
+  const tab = String(state?.settings?.jobsSubTab || "core").toLowerCase();
+  if (tab === "hs" || tab === "college") {
+    return tab;
+  }
+  return "core";
 }
 
 function statusToBadge(status) {

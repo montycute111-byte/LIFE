@@ -1,8 +1,10 @@
 import { awardLevelUpCrates, createDefaultCratesInventory, ensureCratesState } from "./crates.js";
+import { createDefaultEducationPerks, createDefaultEducationState, ensureEducationState } from "./education.js";
+import { getPowerItemMultipliers, POWER_ITEMS_UNLOCK_LEVEL } from "./powerItems.js";
 import { createDefaultRealEstateState, ensureRealEstateState, getResidenceModifiers } from "./realEstate.js";
 import { createDefaultRebirthBonuses, createDefaultRebirthShop, ensureRebirthState } from "./rebirth.js";
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 const DAILY_REWARD_MS = 24 * 60 * 60 * 1000;
 
@@ -32,6 +34,10 @@ export function createDefaultState(username, options = {}) {
     crateHistory: [],
     activeBoosts: [],
     instantTokens: 0,
+    education: createDefaultEducationState(),
+    educationPerks: createDefaultEducationPerks(),
+    powerItems: createDefaultPowerItemsState(fallbackLevelFromOptions(options)),
+    quests: createDefaultQuestState(),
     rebirths: 0,
     rebirthPoints: 0,
     rebirthPointsSpent: 0,
@@ -102,7 +108,10 @@ export function migrateState(oldState, username) {
   state.activeAbilities = activeAbilities;
   state.activeAbility = activeAbilities[0] || null;
   ensureCratesState(state);
+  ensureEducationState(state);
   ensureRebirthState(state);
+  state.powerItems = normalizePowerItemsState(state.powerItems, fallback.powerItems, state.level);
+  state.quests = normalizeQuestState(state.quests, fallback.quests);
   state.boosts = {
     ...fallback.boosts,
     ...(state.boosts && typeof state.boosts === "object" ? state.boosts : {})
@@ -135,7 +144,20 @@ export function deepClone(value) {
 }
 
 export function xpRequiredForLevel(level) {
-  return Math.round(60 + (Math.max(1, level) - 1) * 35);
+  const safeLevel = Math.max(1, Number(level || 1));
+  const baseXp = 60 + (safeLevel - 1) * 35;
+
+  // Faster early progression, but still keeps late-game (toward 400) meaningfully grindy.
+  let speedFactor = 1;
+  if (safeLevel <= 100) {
+    speedFactor = 0.72;
+  } else if (safeLevel <= 250) {
+    speedFactor = 0.82;
+  } else if (safeLevel <= 400) {
+    speedFactor = 0.9;
+  }
+
+  return Math.max(25, Math.round(baseXp * speedFactor));
 }
 
 export function syncLevelProgress(state) {
@@ -181,7 +203,9 @@ export function claimDailyReward(state, now = Date.now()) {
   const residenceModifiers = getResidenceModifiers(state);
   const cooldownReduction = Math.max(0, Math.min(3 * 60 * 60 * 1000, Number(residenceModifiers.dailyCooldownReduceMs || 0)));
   const effectiveCooldown = Math.max(1, DAILY_REWARD_MS - cooldownReduction);
-  state.daily.nextClaimAt = now + effectiveCooldown;
+  const powerMultipliers = getPowerItemMultipliers(state, now);
+  const finalCooldownMs = Math.max(1, Math.round(effectiveCooldown * Math.max(0, Number(powerMultipliers.cooldownMult || 1))));
+  state.daily.nextClaimAt = now + finalCooldownMs;
   state.stats.totalEarned += reward;
 
   const levelsGained = syncLevelProgress(state);
@@ -236,5 +260,62 @@ function normalizeRealEstateState(value, fallback) {
   return {
     owned: value.owned && typeof value.owned === "object" ? value.owned : {},
     activeResidenceId: typeof value.activeResidenceId === "string" ? value.activeResidenceId : null
+  };
+}
+
+function createDefaultPowerItemsState(level = 1) {
+  return {
+    unlocked: Number(level || 0) >= POWER_ITEMS_UNLOCK_LEVEL,
+    owned: {},
+    active: {
+      itemId: null,
+      startedAt: null,
+      endsAt: null
+    }
+  };
+}
+
+function normalizePowerItemsState(value, fallback, level = 1) {
+  const base = fallback && typeof fallback === "object" ? fallback : createDefaultPowerItemsState(level);
+  if (!value || typeof value !== "object") {
+    return base;
+  }
+  const active = value.active && typeof value.active === "object" ? value.active : {};
+  return {
+    unlocked: Number(level || 0) >= POWER_ITEMS_UNLOCK_LEVEL,
+    owned: value.owned && typeof value.owned === "object" ? value.owned : {},
+    active: {
+      itemId: typeof active.itemId === "string" ? active.itemId : null,
+      startedAt: Number.isFinite(active.startedAt) ? active.startedAt : null,
+      endsAt: Number.isFinite(active.endsAt) ? active.endsAt : null
+    }
+  };
+}
+
+function fallbackLevelFromOptions(options) {
+  return Math.max(1, Math.floor(Number(options?.level || 1)));
+}
+
+function createDefaultQuestState() {
+  return {
+    last_roll_date: "",
+    daily_ids: [],
+    progress: {},
+    completed: {},
+    claimed: {}
+  };
+}
+
+function normalizeQuestState(value, fallback) {
+  const base = fallback && typeof fallback === "object" ? fallback : createDefaultQuestState();
+  if (!value || typeof value !== "object") {
+    return base;
+  }
+  return {
+    last_roll_date: typeof value.last_roll_date === "string" ? value.last_roll_date : "",
+    daily_ids: Array.isArray(value.daily_ids) ? value.daily_ids.filter((id) => typeof id === "string") : [],
+    progress: value.progress && typeof value.progress === "object" ? value.progress : {},
+    completed: value.completed && typeof value.completed === "object" ? value.completed : {},
+    claimed: value.claimed && typeof value.claimed === "object" ? value.claimed : {}
   };
 }
