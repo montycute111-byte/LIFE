@@ -665,6 +665,276 @@ export const JOBS = [
     xp: 203500,
     levelRequired: 485,
     educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_01",
+    name: "Quantum Apex Contract 1",
+    durationMs: 16260 * 1000,
+    payout: 530000000,
+    xp: 210000,
+    levelRequired: 500,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_02",
+    name: "Quantum Apex Contract 2",
+    durationMs: 16500 * 1000,
+    payout: 587240000,
+    xp: 214500,
+    levelRequired: 507,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_03",
+    name: "Quantum Apex Contract 3",
+    durationMs: 16740 * 1000,
+    payout: 650661920,
+    xp: 219000,
+    levelRequired: 514,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_04",
+    name: "Quantum Apex Contract 4",
+    durationMs: 16980 * 1000,
+    payout: 720933407,
+    xp: 223500,
+    levelRequired: 521,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_05",
+    name: "Quantum Apex Contract 5",
+    durationMs: 17220 * 1000,
+    payout: 798794215,
+    xp: 228000,
+    levelRequired: 528,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_06",
+    name: "Quantum Apex Contract 6",
+    durationMs: 17460 * 1000,
+    payout: 885063991,
+    xp: 232500,
+    levelRequired: 535,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_07",
+    name: "Quantum Apex Contract 7",
+    durationMs: 17700 * 1000,
+    payout: 980650902,
+    xp: 237000,
+    levelRequired: 542,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_08",
+    name: "Quantum Apex Contract 8",
+    durationMs: 17940 * 1000,
+    payout: 1086561199,
+    xp: 241500,
+    levelRequired: 549,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_09",
+    name: "Quantum Apex Contract 9",
+    durationMs: 18180 * 1000,
+    payout: 1203909808,
+    xp: 246000,
+    levelRequired: 556,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_10",
+    name: "Quantum Apex Contract 10",
+    durationMs: 18420 * 1000,
+    payout: 1333932068,
+    xp: 250500,
+    levelRequired: 563,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_11",
+    name: "Quantum Apex Contract 11",
+    durationMs: 18660 * 1000,
+    payout: 1477996731,
+    xp: 255000,
+    levelRequired: 570,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_12",
+    name: "Quantum Apex Contract 12",
+    durationMs: 18900 * 1000,
+    payout: 1637620378,
+    xp: 259500,
+    levelRequired: 577,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_13",
+    name: "Quantum Apex Contract 13",
+    durationMs: 19140 * 1000,
+    payout: 1814483379,
+    xp: 264000,
+    levelRequired: 584,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_14",
+    name: "Quantum Apex Contract 14",
+    durationMs: 19380 * 1000,
+    payout: 2010447584,
+    xp: 268500,
+    levelRequired: 591,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_15",
+    name: "Quantum Apex Contract 15",
+    durationMs: 19620 * 1000,
+    payout: 2227575923,
+    xp: 273000,
+    levelRequired: 598,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_16",
+    name: "Quantum Apex Contract 16",
+    durationMs: 19860 * 1000,
+    payout: 2468154123,
+    xp: 277500,
+    levelRequired: 605,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_17",
+    name: "Quantum Apex Contract 17",
+    durationMs: 20100 * 1000,
+    payout: 2734714768,
+    xp: 282000,
+    levelRequired: 612,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_18",
+    name: "Quantum Apex Contract 18",
+    durationMs: 20340 * 1000,
+    payout: 3030063963,
+    xp: 286500,
+    levelRequired: 619,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_19",
+    name: "Quantum Apex Contract 19",
+    durationMs: 20580 * 1000,
+    payout: 3357310871,
+    xp: 291000,
+    levelRequired: 626,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_20",
+    name: "Quantum Apex Contract 20",
+    durationMs: 20820 * 1000,
+    payout: 3719900445,
+    xp: 295500,
+    levelRequired: 633,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_21",
+    name: "Quantum Apex Contract 21",
+    durationMs: 21060 * 1000,
+    payout: 4121649693,
+    xp: 300000,
+    levelRequired: 640,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_22",
+    name: "Quantum Apex Contract 22",
+    durationMs: 21300 * 1000,
+    payout: 4566787860,
+    xp: 304500,
+    levelRequired: 647,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_23",
+    name: "Quantum Apex Contract 23",
+    durationMs: 21540 * 1000,
+    payout: 5060000948,
+    xp: 309000,
+    levelRequired: 654,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_24",
+    name: "Quantum Apex Contract 24",
+    durationMs: 21780 * 1000,
+    payout: 5606481051,
+    xp: 313500,
+    levelRequired: 661,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_25",
+    name: "Quantum Apex Contract 25",
+    durationMs: 22020 * 1000,
+    payout: 6211981004,
+    xp: 318000,
+    levelRequired: 668,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_26",
+    name: "Quantum Apex Contract 26",
+    durationMs: 22260 * 1000,
+    payout: 6882874953,
+    xp: 322500,
+    levelRequired: 675,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_27",
+    name: "Quantum Apex Contract 27",
+    durationMs: 22500 * 1000,
+    payout: 7626225448,
+    xp: 327000,
+    levelRequired: 682,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_28",
+    name: "Quantum Apex Contract 28",
+    durationMs: 22740 * 1000,
+    payout: 8449857796,
+    xp: 331500,
+    levelRequired: 689,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_29",
+    name: "Quantum Apex Contract 29",
+    durationMs: 22980 * 1000,
+    payout: 9362442438,
+    xp: 336000,
+    levelRequired: 696,
+    educationRequired: "college"
+  },
+  {
+    id: "quantum_apex_30",
+    name: "Quantum Apex Contract 30",
+    durationMs: 23220 * 1000,
+    payout: 10373586221,
+    xp: 340500,
+    levelRequired: 703,
+    educationRequired: "college"
   }
 ];
 
