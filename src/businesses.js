@@ -6,9 +6,30 @@ import { getRebirthRuntimeModifiers } from "./rebirth.js";
 
 const OFFLINE_CAP_SECONDS = 12 * 60 * 60;
 const MAX_BUY_ITERATIONS = 500;
-const PASSIVE_BASE_INTERVAL_SECONDS = 25;
-const PASSIVE_MIN_INTERVAL_SECONDS = 5;
-const PASSIVE_INTERVAL_REDUCTION_PER_UPGRADE = 0.03;
+const TIER_INTERVAL_MS = {
+  low: 5 * 60 * 1000,
+  mid: 10 * 60 * 1000,
+  high: 20 * 60 * 1000,
+  ultra: 30 * 60 * 1000
+};
+const TIER_UPKEEP_RATE = {
+  low: 0.05,
+  mid: 0.1,
+  high: 0.15,
+  ultra: 0.2
+};
+const TIER_REVENUE_MULTIPLIER = {
+  low: 1,
+  mid: 1.35,
+  high: 1.85,
+  ultra: 2.35
+};
+const TIER_EFFECTIVE_MULTIPLIER_CAP = {
+  low: 6,
+  mid: 10,
+  high: 15,
+  ultra: 20
+};
 
 export const BUSINESS_DEFS = [
   {
@@ -258,9 +279,19 @@ export function ensureBusinessesState(state, now = Date.now()) {
   const lastPassiveTickAt = Number.isFinite(raw.lastPassiveTickAt) && raw.lastPassiveTickAt > 0
     ? raw.lastPassiveTickAt
     : now;
-  const owned = raw.owned && typeof raw.owned === "object" ? raw.owned : {};
+  const sourceOwned = raw.owned && typeof raw.owned === "object" ? raw.owned : {};
+  const owned = {};
+
+  for (const [businessId, rawEntry] of Object.entries(sourceOwned)) {
+    const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId) || null;
+    const normalized = normalizeOwnedBusiness(rawEntry, definition, now, lastPassiveTickAt);
+    if (normalized.qty > 0 || normalized.level > 1 || normalized.paused) {
+      owned[businessId] = normalized;
+    }
+  }
 
   state.businesses = {
+    ...(raw && typeof raw === "object" ? raw : {}),
     buyMultiplier,
     lastPassiveTickAt,
     owned
@@ -283,19 +314,11 @@ export function setBusinessBuyMultiplier(state, mode) {
   };
 }
 
-export function getBusinessState(state, businessId) {
+export function getBusinessState(state, businessId, now = Date.now()) {
   const businesses = ensureBusinessesState(state);
+  const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId) || null;
   const current = businesses.owned[businessId];
-  if (!current || typeof current !== "object") {
-    return {
-      qty: 0,
-      level: 1
-    };
-  }
-  return {
-    qty: Math.max(0, Math.floor(Number(current.qty || 0))),
-    level: Math.max(1, Math.floor(Number(current.level || 1)))
-  };
+  return normalizeOwnedBusiness(current, definition, now, Number(businesses.lastPassiveTickAt || now));
 }
 
 export function getNextUnitCost(definition, qtyOwned, state = null, now = Date.now()) {
@@ -311,65 +334,133 @@ export function getUpgradeCost(definition, level, state = null, now = Date.now()
 }
 
 export function getBusinessIncomePerSec(definition, businessState) {
-  const qty = Math.max(0, Number(businessState?.qty || 0));
-  const level = Math.max(1, Number(businessState?.level || 1));
-  return qty * (definition.baseIncomePerSec * (definition.incomeGrowthPerLevel ** level));
+  const revenue = getBusinessRevenuePerCycle(definition, businessState);
+  const upkeep = getBusinessUpkeepForRevenue(definition, businessState, revenue);
+  const intervalSeconds = Math.max(1, Math.floor(Number(businessState?.payoutIntervalMs || TIER_INTERVAL_MS.mid) / 1000));
+  const netPerCycle = Math.max(0, revenue - upkeep);
+  return netPerCycle / intervalSeconds;
 }
 
-export function getTotalPassivePerSec(state) {
+export function getTotalPassivePerSec(state, now = Date.now()) {
   ensureBusinessesState(state);
+  const payoutMult = getBusinessPayoutMultiplier(state, now);
   let total = 0;
   for (const definition of BUSINESS_DEFS) {
-    const businessState = getBusinessState(state, definition.id);
-    total += getBusinessIncomePerSec(definition, businessState);
+    const businessState = getBusinessState(state, definition.id, now);
+    if (businessState.paused || businessState.qty < 1) {
+      continue;
+    }
+    const revenue = getBusinessRevenuePerCycle(definition, businessState);
+    const scaledRevenue = Math.max(0, Math.round(revenue * payoutMult));
+    const upkeep = getBusinessUpkeepForRevenue(definition, businessState, scaledRevenue);
+    const netPerCycle = Math.max(0, scaledRevenue - upkeep);
+    const intervalSeconds = Math.max(1, Math.floor(businessState.payoutIntervalMs / 1000));
+    total += netPerCycle / intervalSeconds;
   }
-  const residenceModifiers = getResidenceModifiers(state);
-  const businessIncomeMult = Math.max(0, Number(residenceModifiers.businessIncomeMult || 1));
-  const rebirthModifiers = getRebirthRuntimeModifiers(state);
-  const crateMultipliers = getCrateBoostMultipliers(state);
-  const educationMultipliers = getEducationMultipliers(state);
-  const powerMultipliers = getPowerItemMultipliers(state);
-  return total
-    * businessIncomeMult
-    * Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1))
-    * Math.max(0, Number(crateMultipliers.businessPayoutMultiplier || 1))
-    // Education is applied as a tiny final-step multiplier to avoid refactoring core formulas.
-    * Math.max(0, Number(educationMultipliers.businessMultiplier || 1))
-    * Math.max(0, Number(powerMultipliers.bizPayoutMult || 1));
+  return total;
 }
 
 export function getPassiveIntervalSeconds(state) {
   ensureBusinessesState(state);
-  const totalUpgradeLevels = getTotalUpgradeLevels(state);
-  const reductionMultiplier = (1 - PASSIVE_INTERVAL_REDUCTION_PER_UPGRADE) ** totalUpgradeLevels;
-  const intervalSeconds = Math.round(PASSIVE_BASE_INTERVAL_SECONDS * reductionMultiplier);
-  return Math.max(PASSIVE_MIN_INTERVAL_SECONDS, intervalSeconds);
+  return Math.floor(TIER_INTERVAL_MS.low / 1000);
 }
 
 export function getPassiveCycleProgress(state, now = Date.now()) {
   const businesses = ensureBusinessesState(state, now);
-  const intervalSeconds = getPassiveIntervalSeconds(state);
-  const intervalMs = intervalSeconds * 1000;
   const elapsedMs = Math.max(0, now - Number(businesses.lastPassiveTickAt || now));
-  const cycleMs = elapsedMs % intervalMs;
-  const progress = Math.max(0, Math.min(1, cycleMs / intervalMs));
-  const remainingMs = Math.max(0, intervalMs - cycleMs);
+  const progress = Math.max(0, Math.min(1, elapsedMs / TIER_INTERVAL_MS.low));
+  const remainingMs = Math.max(0, TIER_INTERVAL_MS.low - elapsedMs);
 
   return {
     progress,
     remainingMs,
-    intervalSeconds
+    intervalSeconds: Math.floor(TIER_INTERVAL_MS.low / 1000)
   };
 }
 
 export function getTotalPassivePayoutPerCycle(state) {
   const totalPerSec = getTotalPassivePerSec(state);
-  const intervalSeconds = getPassiveIntervalSeconds(state);
-  const rawPayout = totalPerSec * intervalSeconds;
   if (totalPerSec <= 0) {
     return 0;
   }
-  return Math.max(1, Math.round(rawPayout));
+  return Math.max(1, Math.round(totalPerSec * 60));
+}
+
+export function getBusinessCycleProgress(state, businessId, now = Date.now()) {
+  const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId);
+  const businessState = getBusinessState(state, businessId, now);
+  const intervalMs = Math.max(1, Number(businessState.payoutIntervalMs || getTierIntervalMs(getTier(definition))));
+
+  if (businessState.paused) {
+    return {
+      progress: 0,
+      remainingMs: 0,
+      intervalMs
+    };
+  }
+
+  const nextPayoutAt = Number(businessState.nextPayoutAt || now + intervalMs);
+  const lastPayoutAt = Number(businessState.lastPayoutAt || (nextPayoutAt - intervalMs));
+  const elapsedMs = Math.max(0, now - lastPayoutAt);
+  const progress = Math.max(0, Math.min(1, elapsedMs / intervalMs));
+  const remainingMs = Math.max(0, nextPayoutAt - now);
+  return {
+    progress,
+    remainingMs,
+    intervalMs
+  };
+}
+
+export function getBusinessNextUpkeepCost(state, businessId, now = Date.now()) {
+  const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId);
+  if (!definition) {
+    return 0;
+  }
+  const businessState = getBusinessState(state, businessId, now);
+  if (businessState.qty < 1) {
+    return 0;
+  }
+  const payoutMult = getBusinessPayoutMultiplier(state, now);
+  const revenue = Math.max(0, Math.round(getBusinessRevenuePerCycle(definition, businessState) * payoutMult));
+  return getBusinessUpkeepForRevenue(definition, businessState, revenue);
+}
+
+export function payBusinessUpkeep(state, businessId, now = Date.now()) {
+  ensureBusinessesState(state, now);
+  const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId);
+  if (!definition) {
+    return {
+      ok: false,
+      message: "Business not found."
+    };
+  }
+  const businessState = getBusinessState(state, businessId, now);
+  if (!businessState.paused) {
+    return {
+      ok: false,
+      message: "Business is already running."
+    };
+  }
+  const upkeepCost = getBusinessNextUpkeepCost(state, businessId, now);
+  if (Number(state.money || 0) < upkeepCost) {
+    return {
+      ok: false,
+      message: "Not enough cash to pay upkeep."
+    };
+  }
+
+  state.money -= upkeepCost;
+  state.businesses.owned[businessId] = {
+    ...businessState,
+    paused: false,
+    lastPayoutAt: now,
+    nextPayoutAt: now + businessState.payoutIntervalMs
+  };
+  return {
+    ok: true,
+    businessName: definition.name,
+    upkeepPaid: upkeepCost
+  };
 }
 
 export function getBusinessPurchasePreview(state, businessId) {
@@ -390,7 +481,8 @@ export function getBusinessPurchasePreview(state, businessId) {
 }
 
 export function buyBusinessUnits(state, businessId) {
-  ensureBusinessesState(state);
+  const now = Date.now();
+  ensureBusinessesState(state, now);
   const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId);
   if (!definition) {
     return {
@@ -411,7 +503,7 @@ export function buyBusinessUnits(state, businessId) {
     };
   }
 
-  const businessState = getBusinessState(state, businessId);
+  const businessState = getBusinessState(state, businessId, now);
   const plan = buildPurchasePlan(
     definition,
     businessState.qty,
@@ -428,9 +520,14 @@ export function buyBusinessUnits(state, businessId) {
   }
 
   state.money -= plan.cost;
+  const hadNoUnits = businessState.qty < 1;
   state.businesses.owned[businessId] = {
+    ...businessState,
     qty: businessState.qty + plan.qty,
-    level: businessState.level
+    level: businessState.level,
+    paused: false,
+    lastPayoutAt: hadNoUnits ? now : businessState.lastPayoutAt,
+    nextPayoutAt: hadNoUnits ? (now + businessState.payoutIntervalMs) : businessState.nextPayoutAt
   };
 
   return {
@@ -441,7 +538,8 @@ export function buyBusinessUnits(state, businessId) {
 }
 
 export function upgradeBusiness(state, businessId) {
-  ensureBusinessesState(state);
+  const now = Date.now();
+  ensureBusinessesState(state, now);
   const definition = BUSINESS_DEFS.find((entry) => entry.id === businessId);
   if (!definition) {
     return {
@@ -462,7 +560,7 @@ export function upgradeBusiness(state, businessId) {
     };
   }
 
-  const businessState = getBusinessState(state, businessId);
+  const businessState = getBusinessState(state, businessId, now);
   if (businessState.qty < 1) {
     return {
       ok: false,
@@ -480,6 +578,7 @@ export function upgradeBusiness(state, businessId) {
 
   state.money -= upgradeCost;
   state.businesses.owned[businessId] = {
+    ...businessState,
     qty: businessState.qty,
     level: businessState.level + 1
   };
@@ -493,63 +592,27 @@ export function upgradeBusiness(state, businessId) {
 
 export function applyPassiveIncomeTick(state, now = Date.now()) {
   ensureBusinessesState(state, now);
-  const lastTick = Number(state.businesses.lastPassiveTickAt || now);
-  const intervalSeconds = getPassiveIntervalSeconds(state);
-  const intervalMs = intervalSeconds * 1000;
-  const elapsedMs = Math.max(0, now - lastTick);
-  const cycles = Math.floor(elapsedMs / intervalMs);
-
-  if (cycles < 1) {
-    return {
-      earned: 0,
-      elapsedSeconds: 0,
-      totalPerSec: getTotalPassivePerSec(state),
-      intervalSeconds
-    };
-  }
-
-  const totalPerSec = getTotalPassivePerSec(state);
-  const rawEarned = totalPerSec * intervalSeconds * cycles;
-  let earned = Math.round(rawEarned);
-  if (cycles > 0 && totalPerSec > 0) {
-    earned = Math.max(cycles, earned);
-  }
-  if (earned > 0) {
-    state.money += earned;
-  }
+  const result = processPassiveCycles(state, now, false);
   state.businesses.lastPassiveTickAt = now;
 
   return {
-    earned,
-    elapsedSeconds: cycles * intervalSeconds,
-    totalPerSec,
-    intervalSeconds
+    earned: result.earned,
+    elapsedSeconds: result.elapsedSeconds,
+    totalPerSec: getTotalPassivePerSec(state, now),
+    intervalSeconds: Math.floor(TIER_INTERVAL_MS.low / 1000),
+    cycles: result.cycles
   };
 }
 
 export function grantOfflineEarnings(state, now = Date.now()) {
   ensureBusinessesState(state, now);
-  const lastTick = Number(state.businesses.lastPassiveTickAt || now);
-  const elapsedSeconds = Math.max(0, Math.floor((now - lastTick) / 1000));
-  const clampedSeconds = Math.min(elapsedSeconds, OFFLINE_CAP_SECONDS);
-  const intervalSeconds = getPassiveIntervalSeconds(state);
-  const cycles = Math.floor(clampedSeconds / intervalSeconds);
-  const consumedSeconds = cycles * intervalSeconds;
-  const totalPerSec = getTotalPassivePerSec(state);
-  const rawEarned = totalPerSec * consumedSeconds;
-  let earned = Math.round(rawEarned);
-  if (cycles > 0 && totalPerSec > 0) {
-    earned = Math.max(cycles, earned);
-  }
-
-  if (earned > 0) {
-    state.money += earned;
-  }
+  const result = processPassiveCycles(state, now, true);
   state.businesses.lastPassiveTickAt = now;
 
   return {
-    earned,
-    elapsedSeconds: consumedSeconds
+    earned: result.earned,
+    elapsedSeconds: result.elapsedSeconds,
+    cycles: result.cycles
   };
 }
 
@@ -581,18 +644,216 @@ function buildPurchasePlan(definition, qtyOwned, money, mode, state = null) {
   };
 }
 
-function getTotalUpgradeLevels(state) {
-  let total = 0;
-  for (const definition of BUSINESS_DEFS) {
-    const businessState = getBusinessState(state, definition.id);
-    if (businessState.qty < 1) {
-      continue;
-    }
-    total += Math.max(0, businessState.level - 1);
-  }
-  return total;
-}
-
 function getEducationRequirementLabel(programId) {
   return getEducationProgram(programId)?.name || "education program";
+}
+
+function processPassiveCycles(state, now, applyOfflineCap) {
+  const payoutMult = getBusinessPayoutMultiplier(state, now);
+  const lastTick = Number(state.businesses.lastPassiveTickAt || now);
+  const maxProcessStart = applyOfflineCap
+    ? Math.max(lastTick, now - OFFLINE_CAP_SECONDS * 1000)
+    : lastTick;
+
+  let earned = 0;
+  let elapsedSeconds = 0;
+  let cycles = 0;
+
+  for (const definition of BUSINESS_DEFS) {
+    const businessState = getBusinessState(state, definition.id, now);
+    if (businessState.qty < 1) {
+      state.businesses.owned[definition.id] = businessState;
+      continue;
+    }
+    const processed = processBusinessDefinitionCycles(
+      state,
+      definition,
+      businessState,
+      now,
+      maxProcessStart,
+      payoutMult
+    );
+    state.businesses.owned[definition.id] = processed.nextState;
+    earned += processed.earned;
+    elapsedSeconds += processed.elapsedSeconds;
+    cycles += processed.cycles;
+  }
+
+  return {
+    earned,
+    elapsedSeconds,
+    cycles
+  };
+}
+
+function processBusinessDefinitionCycles(state, definition, businessState, now, processStart, payoutMult) {
+  const intervalMs = Math.max(1, Number(businessState.payoutIntervalMs || getTierIntervalMs(businessState.tier)));
+  if (businessState.paused) {
+    return {
+      earned: 0,
+      elapsedSeconds: 0,
+      cycles: 0,
+      nextState: businessState
+    };
+  }
+
+  let nextPayoutAt = Number(businessState.nextPayoutAt || 0);
+  let lastPayoutAt = Number(businessState.lastPayoutAt || 0);
+  if (!Number.isFinite(nextPayoutAt) || nextPayoutAt <= 0) {
+    const seed = Math.max(processStart, now);
+    nextPayoutAt = seed + intervalMs;
+  }
+  if (!Number.isFinite(lastPayoutAt) || lastPayoutAt <= 0) {
+    lastPayoutAt = Math.max(0, nextPayoutAt - intervalMs);
+  }
+
+  if (nextPayoutAt < processStart) {
+    const skippedCycles = Math.floor((processStart - nextPayoutAt) / intervalMs);
+    nextPayoutAt += skippedCycles * intervalMs;
+    if (nextPayoutAt < processStart) {
+      nextPayoutAt += intervalMs;
+    }
+    lastPayoutAt = nextPayoutAt - intervalMs;
+  }
+
+  let earned = 0;
+  let cycles = 0;
+  let paused = false;
+
+  while (nextPayoutAt <= now) {
+    const revenue = Math.max(0, Math.round(getBusinessRevenuePerCycle(definition, businessState) * payoutMult));
+    const upkeep = getBusinessUpkeepForRevenue(definition, businessState, revenue);
+    if (Number(state.money || 0) < upkeep) {
+      paused = true;
+      break;
+    }
+    const net = Math.max(0, revenue - upkeep);
+    state.money += net;
+    earned += net;
+    cycles += 1;
+    lastPayoutAt = nextPayoutAt;
+    nextPayoutAt += intervalMs;
+  }
+
+  return {
+    earned,
+    elapsedSeconds: Math.floor((cycles * intervalMs) / 1000),
+    cycles,
+    nextState: {
+      ...businessState,
+      paused,
+      lastPayoutAt,
+      nextPayoutAt
+    }
+  };
+}
+
+function getBusinessRevenuePerCycle(definition, businessState) {
+  const qty = Math.max(0, Math.floor(Number(businessState?.qty || 0)));
+  if (qty < 1) {
+    return 0;
+  }
+  const level = Math.max(1, Math.floor(Number(businessState?.level || 1)));
+  const tier = normalizeTier(businessState?.tier || getTier(definition));
+  const baseRevenue = getBaseRevenuePerUnit(definition) * qty;
+  const growthMultiplier = 1 + (level ** 0.65);
+  const rawEffectiveMultiplier = growthMultiplier * getTierRevenueMultiplier(tier);
+  const effectiveMultiplier = applyTierSoftcap(rawEffectiveMultiplier, tier);
+  return Math.max(0, Math.round(baseRevenue * effectiveMultiplier));
+}
+
+function getBusinessUpkeepForRevenue(definition, businessState, revenuePerCycle) {
+  const qty = Math.max(0, Math.floor(Number(businessState?.qty || 0)));
+  const tier = normalizeTier(businessState?.tier || getTier(definition));
+  const rate = Math.max(0, Number(businessState?.upkeepRate || getTierUpkeepRate(tier)));
+  const baseUpkeep = Math.max(1, Math.round(getBaseRevenuePerUnit(definition) * Math.max(1, qty) * 0.03));
+  return Math.max(baseUpkeep, Math.round(Math.max(0, revenuePerCycle) * rate));
+}
+
+function getBusinessPayoutMultiplier(state, now = Date.now()) {
+  const residenceModifiers = getResidenceModifiers(state);
+  const rebirthModifiers = getRebirthRuntimeModifiers(state);
+  const crateMultipliers = getCrateBoostMultipliers(state);
+  const educationMultipliers = getEducationMultipliers(state);
+  const powerMultipliers = getPowerItemMultipliers(state, now);
+  return Math.max(0, Number(residenceModifiers.businessIncomeMult || 1))
+    * Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1))
+    * Math.max(0, Number(crateMultipliers.businessPayoutMultiplier || 1))
+    * Math.max(0, Number(educationMultipliers.businessMultiplier || 1))
+    * Math.max(0, Number(powerMultipliers.bizPayoutMult || 1));
+}
+
+function normalizeOwnedBusiness(rawEntry, definition, now = Date.now(), fallbackLastPayoutAt = now) {
+  const base = rawEntry && typeof rawEntry === "object" ? rawEntry : {};
+  const tier = normalizeTier(base.tier || getTier(definition));
+  const payoutIntervalMs = getTierIntervalMs(tier);
+  const upkeepRate = getTierUpkeepRate(tier);
+  const qty = Math.max(0, Math.floor(Number(base.qty || 0)));
+  const level = Math.max(1, Math.floor(Number(base.level || 1)));
+  const lastPayoutAt = Number.isFinite(base.lastPayoutAt) && Number(base.lastPayoutAt) > 0
+    ? Number(base.lastPayoutAt)
+    : Math.max(0, Number(fallbackLastPayoutAt || now));
+  const nextPayoutAtRaw = Number(base.nextPayoutAt || 0);
+  const nextPayoutAt = Number.isFinite(nextPayoutAtRaw) && nextPayoutAtRaw > 0
+    ? Math.max(nextPayoutAtRaw, lastPayoutAt + payoutIntervalMs)
+    : (lastPayoutAt + payoutIntervalMs);
+  return {
+    ...base,
+    qty,
+    level,
+    tier,
+    payoutIntervalMs,
+    upkeepRate,
+    paused: Boolean(base.paused),
+    nextPayoutAt,
+    lastPayoutAt
+  };
+}
+
+function getBaseRevenuePerUnit(definition) {
+  const base = Math.max(1, Number(definition?.baseIncomePerSec || 1));
+  return Math.max(25, Math.round((base ** 0.62) * 120));
+}
+
+function applyTierSoftcap(multiplier, tier) {
+  const safe = Math.max(1, Number(multiplier || 1));
+  const cap = Math.max(1, Number(TIER_EFFECTIVE_MULTIPLIER_CAP[normalizeTier(tier)] || TIER_EFFECTIVE_MULTIPLIER_CAP.mid));
+  if (safe <= cap) {
+    return safe;
+  }
+  return cap + Math.log10(1 + (safe - cap));
+}
+
+function getTier(definition) {
+  const unlockLevel = Math.max(1, Number(definition?.unlockLevel || 1));
+  if (unlockLevel < 25) {
+    return "low";
+  }
+  if (unlockLevel < 80) {
+    return "mid";
+  }
+  if (unlockLevel < 160) {
+    return "high";
+  }
+  return "ultra";
+}
+
+function normalizeTier(tier) {
+  const key = String(tier || "").trim().toLowerCase();
+  if (key === "low" || key === "mid" || key === "high" || key === "ultra") {
+    return key;
+  }
+  return "mid";
+}
+
+function getTierIntervalMs(tier) {
+  return TIER_INTERVAL_MS[normalizeTier(tier)] || TIER_INTERVAL_MS.mid;
+}
+
+function getTierUpkeepRate(tier) {
+  return TIER_UPKEEP_RATE[normalizeTier(tier)] || TIER_UPKEEP_RATE.mid;
+}
+
+function getTierRevenueMultiplier(tier) {
+  return TIER_REVENUE_MULTIPLIER[normalizeTier(tier)] || TIER_REVENUE_MULTIPLIER.mid;
 }

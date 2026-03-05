@@ -1,9 +1,9 @@
 import {
   BUSINESS_DEFS,
+  getBusinessCycleProgress,
   getBusinessIncomePerSec,
-  getPassiveCycleProgress,
   getBusinessPurchasePreview,
-  getPassiveIntervalSeconds,
+  getBusinessNextUpkeepCost,
   getTotalPassivePayoutPerCycle,
   getBusinessState,
   getUpgradeCost
@@ -83,7 +83,7 @@ function renderAuth(viewModel) {
 }
 
 function renderGame(viewModel) {
-  const { session, state, saveStatus, notice } = viewModel;
+  const { session, state, saveStatus, notice, saveDebug } = viewModel;
   const now = Date.now();
   const effects = getPlayerEffects(state, now);
   const activeTab = state?.settings?.activeTab || "dashboard";
@@ -104,6 +104,8 @@ function renderGame(viewModel) {
         </div>
       </header>
 
+      ${saveDebug?.enabled ? renderSaveDebugPanel(saveDebug) : ""}
+
       <section class="card app-nav-card">
         <div class="top-actions tab-strip" data-scroll-key="main-tabs">
           <button class="tab-btn ${activeTab === "dashboard" ? "active" : ""}" data-action="tab" data-tab="dashboard">Dashboard</button>
@@ -121,6 +123,29 @@ function renderGame(viewModel) {
       </section>
 
       ${renderActiveTab(state, effects, now, viewModel)}
+    </section>
+  `;
+}
+
+function renderSaveDebugPanel(saveDebug) {
+  const revision = Math.max(0, Number(saveDebug?.revision || 0));
+  const sizeBytes = Math.max(0, Number(saveDebug?.sizeBytes || 0));
+  const lastSaved = Number(saveDebug?.lastSaved || 0);
+  const lastError = String(saveDebug?.lastError || "").trim();
+  return `
+    <section class="card save-debug-card">
+      <div class="row-head">
+        <h2>Save Debug</h2>
+        <span class="rarity-pill epic">dev</span>
+      </div>
+      <div class="row-meta">Revision: ${formatNumber(revision)}</div>
+      <div class="row-meta">Last saved: ${lastSaved > 0 ? new Date(lastSaved).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "never"}</div>
+      <div class="row-meta">Serialized size: ${formatNumber(sizeBytes)} bytes</div>
+      <div class="row-meta">Last error: ${escapeHtml(lastError || "none")}</div>
+      <div class="top-actions">
+        <button class="btn secondary" data-action="force-save">Force Save</button>
+        <button class="btn" data-action="export-save">Export Save JSON</button>
+      </div>
     </section>
   `;
 }
@@ -365,14 +390,24 @@ function renderCratesTab(state, viewModel) {
                 <strong>${rarity[0].toUpperCase()}${rarity.slice(1)} Crate</strong>
                 <span class="rarity-pill ${rarityForCrate(rarity)}">x${formatNumber(inventory[rarity] || 0)}</span>
               </div>
-              <button
-                class="btn secondary"
-                data-action="open-crate"
-                data-rarity="${rarity}"
-                ${(isOpening || Number(inventory[rarity] || 0) < 1) ? "disabled" : ""}
-              >
-                Open
-              </button>
+              <div class="top-actions">
+                <button
+                  class="btn secondary"
+                  data-action="open-crate"
+                  data-rarity="${rarity}"
+                  ${(isOpening || Number(inventory[rarity] || 0) < 1) ? "disabled" : ""}
+                >
+                  Open
+                </button>
+                <button
+                  class="btn"
+                  data-action="open-all-crate"
+                  data-rarity="${rarity}"
+                  ${(isOpening || Number(inventory[rarity] || 0) < 1) ? "disabled" : ""}
+                >
+                  Open All
+                </button>
+              </div>
             </div>
           `).join("")}
         </div>
@@ -778,9 +813,7 @@ function renderBusinessesTab(state, now) {
   const buyMode = state?.businesses?.buyMultiplier === 10 || state?.businesses?.buyMultiplier === "max"
     ? state.businesses.buyMultiplier
     : 1;
-  const totalPayoutPerCycle = getTotalPassivePayoutPerCycle(state);
-  const payoutIntervalSeconds = getPassiveIntervalSeconds(state);
-  const cycle = getPassiveCycleProgress(state, now);
+  const totalPayoutPerMinute = getTotalPassivePayoutPerCycle(state);
   const visibleBusinesses = BUSINESS_DEFS.filter((definition) => {
     if (businessesSubTab === "hs") {
       return definition.educationRequired === "hs";
@@ -815,12 +848,12 @@ function renderBusinessesTab(state, now) {
         </div>
         <div class="business-stats-grid">
           <div class="business-stat-chip">
-            <span>Total passive income</span>
-            <strong>$${formatNumber(totalPayoutPerCycle)} per payout</strong>
+            <span>Estimated passive net</span>
+            <strong>$${formatNumber(totalPayoutPerMinute)} / min</strong>
           </div>
           <div class="business-stat-chip">
-            <span>Payout interval</span>
-            <strong>${formatCountdown(payoutIntervalSeconds * 1000)}</strong>
+            <span>Payout tiers</span>
+            <strong>Low 5m • Mid 10m • High 20m • Ultra 30m</strong>
           </div>
         </div>
       </article>
@@ -833,15 +866,20 @@ function renderBusinessesTab(state, now) {
             const educationLocked = Boolean(definition.educationRequired)
               && !isEducationCompleted(state, definition.educationRequired);
             const locked = levelLocked || educationLocked;
-            const businessState = getBusinessState(state, definition.id);
+            const businessState = getBusinessState(state, definition.id, now);
             const hasUnits = businessState.qty > 0;
             const incomePerSec = getBusinessIncomePerSec(definition, businessState);
-            const payoutPerCycle = Math.max(0, Math.round(incomePerSec * payoutIntervalSeconds));
+            const payoutPerCycle = Math.max(0, Math.round(incomePerSec * Math.max(1, businessState.payoutIntervalMs / 1000)));
+            const intervalMs = Math.max(1, Number(businessState.payoutIntervalMs || 0));
+            const upkeepRateText = `${Math.round(Math.max(0, Number(businessState.upkeepRate || 0)) * 100)}%`;
+            const cycle = getBusinessCycleProgress(state, definition.id, now);
+            const nextUpkeepCost = getBusinessNextUpkeepCost(state, definition.id, now);
             const preview = getBusinessPurchasePreview(state, definition.id);
             const plannedCost = preview.qty > 0 ? preview.cost : preview.nextUnitCost;
             const plannedQty = preview.qty > 0 ? preview.qty : (buyMode === 10 ? 10 : 1);
             const upgradeCost = getUpgradeCost(definition, businessState.level, state);
             const canUpgrade = !locked && businessState.qty > 0 && Number(state.money || 0) >= upgradeCost;
+            const canResume = businessState.paused && Number(state.money || 0) >= nextUpkeepCost;
             const buyButtonLabel = buyMode === "max"
               ? `Buy Max (${preview.qty})`
               : `Buy x${plannedQty}`;
@@ -857,7 +895,7 @@ function renderBusinessesTab(state, now) {
               <div class="item-row business-card ${locked ? "business-tile locked" : "business-tile"}">
                 <div class="row-head">
                   <strong>${escapeHtml(definition.name)}</strong>
-                  <span class="rarity-pill ${locked ? "common" : "uncommon"}">${locked ? `Lvl ${definition.unlockLevel}` : "Unlocked"}</span>
+                  <span class="rarity-pill ${locked ? "common" : (businessState.paused ? "rare" : "uncommon")}">${locked ? `Lvl ${definition.unlockLevel}` : (businessState.paused ? "Paused" : "Running")}</span>
                 </div>
                 <div class="row-meta">${escapeHtml(definition.description || "")}</div>
                 ${locked
@@ -867,12 +905,14 @@ function renderBusinessesTab(state, now) {
                   `
                   : `
                     <div class="row-meta">Qty ${formatNumber(businessState.qty)} • Lvl ${formatNumber(businessState.level)} • Payout $${formatNumber(payoutPerCycle)}/cycle</div>
-                    <div class="progress-wrap"><div class="progress-bar" style="width: ${(hasUnits ? cycle.progress : 0) * 100}%"></div></div>
-                    <div class="row-meta">${hasUnits ? `Next payout ${formatCountdown(cycle.remainingMs)}` : "No units owned yet."}</div>
+                    <div class="row-meta">Tier: ${escapeHtml(String(businessState.tier || "").toUpperCase())} • Interval: ${formatCountdown(intervalMs)} • Upkeep: ${upkeepRateText}</div>
+                    <div class="progress-wrap"><div class="progress-bar" style="width: ${(hasUnits && !businessState.paused ? cycle.progress : 0) * 100}%"></div></div>
+                    <div class="row-meta">${hasUnits ? (businessState.paused ? `Paused: pay $${formatNumber(nextUpkeepCost)} upkeep to resume` : `Next payout ${formatCountdown(cycle.remainingMs)}`) : "No units owned yet."}</div>
                     <div class="row-meta">Next cost $${formatNumber(plannedCost)}</div>
                     <div class="top-actions">
                       <button class="btn" data-action="buy-business" data-id="${definition.id}" ${preview.qty < 1 ? "disabled" : ""}>${buyButtonLabel}</button>
                       <button class="btn secondary" data-action="upgrade-business" data-id="${definition.id}" ${canUpgrade ? "" : "disabled"}>Upgrade ($${formatNumber(upgradeCost)})</button>
+                      ${businessState.paused ? `<button class="btn tertiary" data-action="pay-business-upkeep" data-id="${definition.id}" ${canResume ? "" : "disabled"}>Pay Upkeep ($${formatNumber(nextUpkeepCost)})</button>` : ""}
                     </div>
                   `}
               </div>
@@ -1082,6 +1122,8 @@ function bindEvents(root, viewModel, handlers) {
   root.querySelector("#claimJobsBtn")?.addEventListener("click", () => handlers.onClaimJobs());
   root.querySelector("#saveNowBtn")?.addEventListener("click", () => handlers.onSaveNow());
   root.querySelector("#logoutBtn")?.addEventListener("click", () => handlers.onLogout());
+  root.querySelector("[data-action='force-save']")?.addEventListener("click", () => handlers.onForceSave?.());
+  root.querySelector("[data-action='export-save']")?.addEventListener("click", () => handlers.onExportSave?.());
 
   root.querySelectorAll("[data-action='tab']").forEach((button) => {
     button.addEventListener("click", () => handlers.onSetTab(button.dataset.tab));
@@ -1113,6 +1155,9 @@ function bindEvents(root, viewModel, handlers) {
   root.querySelectorAll("[data-action='upgrade-business']").forEach((button) => {
     button.addEventListener("click", () => handlers.onUpgradeBusiness(button.dataset.id));
   });
+  root.querySelectorAll("[data-action='pay-business-upkeep']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onPayBusinessUpkeep(button.dataset.id));
+  });
   root.querySelectorAll("[data-action='buy-residence']").forEach((button) => {
     button.addEventListener("click", () => handlers.onBuyResidence(button.dataset.id));
   });
@@ -1139,6 +1184,9 @@ function bindEvents(root, viewModel, handlers) {
   });
   root.querySelectorAll("[data-action='open-crate']").forEach((button) => {
     button.addEventListener("click", () => handlers.onOpenCrate(button.dataset.rarity));
+  });
+  root.querySelectorAll("[data-action='open-all-crate']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onOpenAllCrates(button.dataset.rarity));
   });
   root.querySelectorAll("[data-action='enroll-education']").forEach((button) => {
     button.addEventListener("click", () => handlers.onEnrollEducation(button.dataset.id));

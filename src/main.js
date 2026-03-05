@@ -3,13 +3,19 @@ import {
   applyPassiveIncomeTick,
   buyBusinessUnits,
   grantOfflineEarnings,
+  payBusinessUpkeep,
   setBusinessBuyMultiplier,
   upgradeBusiness
 } from "./businesses.js";
 import { openCrate, pruneExpiredBoosts } from "./crates.js";
 import { checkEducationCompletion, enrollEducationProgram } from "./education.js";
-import { claimDailyReward, createDefaultState, migrateState, updateLastLogin } from "./gameState.js";
+import { claimDailyReward, updateLastLogin } from "./gameState.js";
 import { claimReadyJobs, refreshTimedState, startJobToFillSlots, useInstantJobToken } from "./jobs.js";
+import {
+  getSerializedStateSize,
+  getStateRevision,
+  subscribeToStateChanges
+} from "./persistence.js";
 import {
   activatePowerItem,
   buyPowerItem,
@@ -30,8 +36,15 @@ import { renderApp } from "./ui.js";
 
 const AUTOSAVE_INTERVAL_MS = 30 * 1000;
 const QUEST_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+const SAVE_DEBOUNCE_MS = 200;
+const MAX_BULK_CRATE_OPENS = 500;
+const SAVE_DEBUG_FLAG_KEY = "fakebank_debug_save_panel";
 
 const root = document.getElementById("app");
+const SHOW_SAVE_DEBUG_PANEL = isSaveDebugEnabled();
+let pendingSaveTimer = null;
+let stateStorageUnsubscribe = null;
+
 const viewModel = {
   session: null,
   state: null,
@@ -43,7 +56,14 @@ const viewModel = {
   crateOpeningRarity: "",
   lastCrateResult: null,
   crateOpenTimers: [],
-  isEnrollingEducation: false
+  isEnrollingEducation: false,
+  saveDebug: {
+    enabled: SHOW_SAVE_DEBUG_PANEL,
+    revision: 0,
+    sizeBytes: 0,
+    lastSaved: 0,
+    lastError: ""
+  }
 };
 
 boot();
@@ -56,7 +76,12 @@ function boot() {
     if (!viewModel.state) {
       return;
     }
+    const beforeSignature = snapshotSignature(viewModel.state);
     applyTimedUpdates();
+    const afterSignature = snapshotSignature(viewModel.state);
+    if (beforeSignature !== afterSignature) {
+      schedulePersist("Autosaved locally");
+    }
     render();
   }, 1000);
 
@@ -68,13 +93,16 @@ function boot() {
   }, QUEST_REFRESH_INTERVAL_MS);
 
   window.addEventListener("beforeunload", () => {
+    flushPendingSave();
     persist("Saved before close");
   });
   window.addEventListener("pagehide", () => {
+    flushPendingSave();
     persist("Saved before close");
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
+      flushPendingSave();
       persist("Saved in background");
     }
   });
@@ -97,10 +125,8 @@ function hydrateStoredSession() {
 }
 
 function loadGame(session, options = {}) {
-  const loaded = loadUserState(session.username);
-  const baseState = loaded.value
-    ? migrateState(loaded.value, session.username)
-    : createDefaultState(session.username, { isGuest: session.isGuest });
+  const loaded = loadUserState(session.username, { isGuest: session.isGuest });
+  const baseState = loaded.value;
 
   updateLastLogin(baseState);
   ensureRebirthState(baseState);
@@ -131,6 +157,8 @@ function loadGame(session, options = {}) {
     notices.push("New daily quests are ready.");
   }
   viewModel.notice = notices.join(" ");
+  attachStorageSync(session.username);
+  updateSaveDebug("");
 
   persist("Loaded local save");
 }
@@ -146,6 +174,14 @@ function render() {
       persist("Saved locally");
       render();
     },
+    onForceSave: () => {
+      flushPendingSave();
+      persist("Force-saved locally");
+      render();
+    },
+    onExportSave: () => {
+      exportSaveJson();
+    },
     onLogout: handleLogout,
     onStartJob: (jobId) => runGameAction((state) => startJobToFillSlots(state, jobId)),
     onUseInstantToken: (jobId) => runGameAction((state) => useInstantJobToken(state, jobId), { preserveScroll: true }),
@@ -154,6 +190,7 @@ function render() {
     onBuyPowerItem: (itemId) => runGameAction((state) => buyPowerItem(state, itemId), { preserveScroll: true }),
     onActivatePowerItem: (itemId) => runGameAction((state) => activatePowerItem(state, itemId), { preserveScroll: true }),
     onOpenCrate: (rarity) => handleOpenCrate(rarity),
+    onOpenAllCrates: (rarity) => handleOpenAllCrates(rarity),
     onEnrollEducation: (programId) => handleEnrollEducation(programId),
     onBuyRebirthUpgrade: (upgradeId) => runGameAction((state) => buyRebirthShopUpgrade(state, upgradeId), { preserveScroll: true }),
     onConfirmRebirth: () => handleRebirthConfirm(),
@@ -162,6 +199,7 @@ function render() {
     onSetBusinessesSubTab: (tabId) => runGameAction((state) => setBusinessesSubTab(state, tabId), { preserveNotice: true, preserveScroll: true }),
     onBuyBusiness: (businessId) => runGameAction((state) => buyBusinessUnits(state, businessId), { preserveScroll: true }),
     onUpgradeBusiness: (businessId) => runGameAction((state) => upgradeBusiness(state, businessId), { preserveScroll: true }),
+    onPayBusinessUpkeep: (businessId) => runGameAction((state) => payBusinessUpkeep(state, businessId), { preserveScroll: true }),
     onClaimQuest: (questId) => runGameAction((state) => claimQuest(state, questId), { preserveScroll: true }),
     onBuyResidence: (residenceId) => runGameAction((state) => buyResidence(state, residenceId), { preserveScroll: true }),
     onMoveInResidence: (residenceId) => runGameAction((state) => moveInResidence(state, residenceId), { preserveScroll: true }),
@@ -200,7 +238,9 @@ function handleGuest() {
 
 function handleLogout() {
   clearCrateOpenTimers();
+  flushPendingSave();
   persist("Saved before logout");
+  detachStorageSync();
   logout();
   viewModel.session = null;
   viewModel.state = null;
@@ -212,6 +252,7 @@ function handleLogout() {
   viewModel.crateOpeningRarity = "";
   viewModel.lastCrateResult = null;
   viewModel.isEnrollingEducation = false;
+  updateSaveDebug(null);
   render();
 }
 
@@ -259,11 +300,34 @@ function persist(label) {
   if (!viewModel.session || !viewModel.state) {
     return false;
   }
+  if (pendingSaveTimer) {
+    window.clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = null;
+  }
 
-  viewModel.state.lastSavedAt = Date.now();
   const saved = saveUserState(viewModel.session.username, viewModel.state);
-  viewModel.saveStatus = saved.ok ? `${label} at ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Save failed";
-  return saved.ok;
+  if (!saved.ok) {
+    if (saved.conflict && saved.latestState) {
+      // Protect against stale-tab overwrites by taking the newer state.
+      const latest = loadUserState(viewModel.session.username, { isGuest: viewModel.session.isGuest });
+      if (latest.value) {
+        viewModel.state = latest.value;
+      }
+      viewModel.notice = "Newer save detected in another tab. Loaded latest progress.";
+      viewModel.saveStatus = "Synced newer save";
+      updateSaveDebug("Save conflict resolved by syncing newer revision.");
+      return false;
+    }
+    const errorMessage = saved.error?.message || "Save failed.";
+    viewModel.saveStatus = "Save failed";
+    updateSaveDebug(errorMessage);
+    return false;
+  }
+
+  const now = Number(viewModel.state?._meta?.lastSaved || Date.now());
+  viewModel.saveStatus = `${label} at ${new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
+  updateSaveDebug("");
+  return true;
 }
 
 function describeActionResult(result) {
@@ -313,6 +377,9 @@ function describeActionResult(result) {
   if (result.businessName && Number(result.newLevel || 0) > 1) {
     return `${result.businessName} upgraded to level ${result.newLevel}.`;
   }
+  if (result.businessName && Number(result.upkeepPaid || 0) > 0) {
+    return `${result.businessName} resumed (paid $${result.upkeepPaid.toLocaleString()} upkeep).`;
+  }
   if (result.residenceName && Number(result.newLevel || 0) > 0) {
     return `${result.residenceName} upgraded to level ${result.newLevel}.`;
   }
@@ -350,26 +417,18 @@ function applyTimedUpdates() {
   const powerSync = syncPowerItems(viewModel.state);
   if (powerSync.changed && powerSync.expiredItemName) {
     viewModel.notice = `${powerSync.expiredItemName} expired.`;
-    persist("Saved after power item expiry");
   }
   const updates = refreshTimedState(viewModel.state);
   const educationUpdates = checkEducationCompletion(viewModel.state);
   if (educationUpdates.completedCount > 0) {
     viewModel.notice = "Education program completed!";
-    persist("Saved after education completion");
   }
   pruneExpiredBoosts(viewModel.state);
   const passive = applyPassiveIncomeTick(viewModel.state);
   if (Number(passive?.earned || 0) > 0) {
-    const cycles = Math.max(
-      1,
-      Math.floor(Number(passive.elapsedSeconds || 0) / Math.max(1, Number(passive.intervalSeconds || 1)))
-    );
-    const bizQuest = trackQuestEvent(viewModel.state, "BIZ_COLLECT", { amount: Number(passive.earned || 0), count: cycles });
-    const cashQuest = trackQuestEvent(viewModel.state, "CASH_BALANCE", { amount: Number(viewModel.state.money || 0) });
-    if (bizQuest.changed || cashQuest.changed) {
-      persist("Saved quest progress");
-    }
+    const cycles = Math.max(1, Number(passive.cycles || 1));
+    trackQuestEvent(viewModel.state, "BIZ_COLLECT", { amount: Number(passive.earned || 0), count: cycles });
+    trackQuestEvent(viewModel.state, "CASH_BALANCE", { amount: Number(viewModel.state.money || 0) });
     viewModel.notice = `Passive income: +$${Math.round(passive.earned).toLocaleString()}.`;
   }
   const activePower = getPowerItemMultipliers(viewModel.state);
@@ -377,7 +436,6 @@ function applyTimedUpdates() {
     const autoClaim = claimReadyJobs(viewModel.state);
     if (autoClaim?.ok) {
       viewModel.notice = `Auto Collector claimed ${autoClaim.count} job(s) for $${autoClaim.totalCash}.`;
-      persist("Saved after auto-collect");
     }
   }
   if (Number(updates?.deliveredCount || 0) > 0) {
@@ -469,6 +527,63 @@ function handleOpenCrate(rarity) {
   viewModel.crateOpenTimers = [openingTimer, resolveTimer];
 }
 
+function handleOpenAllCrates(rarity) {
+  if (!viewModel.state || viewModel.isOpeningCrate) {
+    return;
+  }
+  const normalized = String(rarity || "").toLowerCase();
+  const available = Math.max(0, Number(viewModel.state?.cratesInventory?.[normalized] || 0));
+  if (available < 1) {
+    viewModel.notice = "No crates of that rarity available.";
+    render();
+    return;
+  }
+
+  clearCrateOpenTimers();
+  viewModel.isOpeningCrate = true;
+  viewModel.crateOpeningRarity = normalized;
+  viewModel.crateOpeningStage = `Opening all (${Math.min(available, MAX_BULK_CRATE_OPENS)})...`;
+  viewModel.lastCrateResult = null;
+  render();
+
+  const openingTimer = window.setTimeout(() => {
+    viewModel.crateOpeningStage = "Rolling...";
+    render();
+  }, 220);
+
+  const resolveTimer = window.setTimeout(() => {
+    const toOpen = Math.min(available, MAX_BULK_CRATE_OPENS);
+    let opened = 0;
+    let lastResult = null;
+
+    for (let i = 0; i < toOpen; i += 1) {
+      const result = openCrate(viewModel.state, normalized, Date.now() + i);
+      if (!result?.ok) {
+        break;
+      }
+      opened += 1;
+      lastResult = result;
+    }
+
+    if (opened > 0) {
+      persist("Saved locally");
+      viewModel.lastCrateResult = lastResult;
+      const cappedNote = available > toOpen ? ` (first ${toOpen} only)` : "";
+      viewModel.notice = `Opened ${opened} ${normalized} crate${opened === 1 ? "" : "s"}${cappedNote}.`;
+    } else {
+      viewModel.notice = "No crates were opened.";
+    }
+
+    viewModel.isOpeningCrate = false;
+    viewModel.crateOpeningStage = "";
+    viewModel.crateOpeningRarity = "";
+    clearCrateOpenTimers();
+    render();
+  }, 700);
+
+  viewModel.crateOpenTimers = [openingTimer, resolveTimer];
+}
+
 function handleEnrollEducation(programId) {
   if (!viewModel.state || viewModel.isEnrollingEducation) {
     return;
@@ -512,4 +627,114 @@ function refreshDailyQuestsIfNeeded() {
   viewModel.notice = "New daily quests are available.";
   persist("Saved daily quests");
   render();
+}
+
+function schedulePersist(label) {
+  if (!viewModel.session || !viewModel.state) {
+    return;
+  }
+  if (pendingSaveTimer) {
+    window.clearTimeout(pendingSaveTimer);
+  }
+  pendingSaveTimer = window.setTimeout(() => {
+    pendingSaveTimer = null;
+    persist(label || "Autosaved locally");
+    render();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+function flushPendingSave() {
+  if (!pendingSaveTimer) {
+    return;
+  }
+  window.clearTimeout(pendingSaveTimer);
+  pendingSaveTimer = null;
+}
+
+function attachStorageSync(username) {
+  detachStorageSync();
+  stateStorageUnsubscribe = subscribeToStateChanges(username, (incomingState, meta) => {
+    if (!viewModel.state || !viewModel.session) {
+      return;
+    }
+    const incomingRevision = Math.max(0, Number(meta?.revision || getStateRevision(incomingState)));
+    const localRevision = getStateRevision(viewModel.state);
+    if (incomingRevision <= localRevision) {
+      return;
+    }
+    viewModel.state = incomingState;
+    viewModel.notice = "Newer save detected from another tab. Synced.";
+    viewModel.saveStatus = `Synced rev ${incomingRevision}`;
+    updateSaveDebug("");
+    render();
+  });
+}
+
+function detachStorageSync() {
+  if (typeof stateStorageUnsubscribe === "function") {
+    stateStorageUnsubscribe();
+  }
+  stateStorageUnsubscribe = null;
+}
+
+function updateSaveDebug(lastErrorMessage) {
+  if (!viewModel.saveDebug?.enabled) {
+    return;
+  }
+  const currentState = viewModel.state;
+  viewModel.saveDebug = {
+    enabled: true,
+    revision: currentState ? getStateRevision(currentState) : 0,
+    sizeBytes: currentState ? getSerializedStateSize(currentState) : 0,
+    lastSaved: Number(currentState?._meta?.lastSaved || 0),
+    lastError: String(lastErrorMessage || "")
+  };
+}
+
+function exportSaveJson() {
+  if (!viewModel.session || !viewModel.state) {
+    return;
+  }
+  try {
+    const serialized = JSON.stringify(viewModel.state, null, 2);
+    const blob = new Blob([serialized], { type: "application/json" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const username = String(viewModel.session.username || "player");
+    link.href = downloadUrl;
+    link.download = `fakebank-save-${username}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+    viewModel.notice = "Save exported to JSON.";
+    updateSaveDebug("");
+    render();
+  } catch (error) {
+    viewModel.notice = "Could not export save JSON.";
+    updateSaveDebug(error?.message || "Export failed");
+    render();
+  }
+}
+
+function snapshotSignature(state) {
+  if (!state || typeof state !== "object") {
+    return "";
+  }
+  try {
+    return JSON.stringify(state);
+  } catch (_error) {
+    return "";
+  }
+}
+
+function isSaveDebugEnabled() {
+  try {
+    if (new URLSearchParams(window.location.search).get("debugSave") === "1") {
+      return true;
+    }
+    return localStorage.getItem(SAVE_DEBUG_FLAG_KEY) === "1";
+  } catch (_error) {
+    return false;
+  }
 }

@@ -4,7 +4,7 @@ import { getPowerItemMultipliers, POWER_ITEMS_UNLOCK_LEVEL } from "./powerItems.
 import { createDefaultRealEstateState, ensureRealEstateState, getResidenceModifiers } from "./realEstate.js";
 import { createDefaultRebirthBonuses, createDefaultRebirthShop, ensureRebirthState } from "./rebirth.js";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 const DAILY_REWARD_MS = 24 * 60 * 60 * 1000;
 
@@ -60,7 +60,10 @@ export function createDefaultState(username, options = {}) {
     settings: {
       compactMode: false,
       activeTab: "dashboard",
-      autoFillJobs: false
+      autoFillJobs: false,
+      storeSubTab: "items",
+      jobsSubTab: "core",
+      businessesSubTab: "core"
     },
     stats: {
       jobsCompleted: 0,
@@ -69,7 +72,13 @@ export function createDefaultState(username, options = {}) {
     log: [
       createLogEntry("Fresh account funded with a starter balance of $250.", now)
     ],
-    lastSavedAt: 0
+    lastSavedAt: 0,
+    _meta: {
+      schemaVersion: SCHEMA_VERSION,
+      revision: 0,
+      lastSaved: 0,
+      lastLoaded: now
+    }
   };
 }
 
@@ -134,6 +143,9 @@ export function migrateState(oldState, username) {
   };
   state.log = Array.isArray(state.log) ? state.log.slice(0, 15) : fallback.log;
   state.lastSavedAt = numberOr(state.lastSavedAt, 0);
+  state._meta = normalizeStateMeta(state._meta, fallback._meta);
+  state._meta.schemaVersion = SCHEMA_VERSION;
+  state._meta.lastLoaded = Date.now();
 
   syncLevelProgress(state);
   return state;
@@ -242,12 +254,46 @@ function normalizeBusinessesState(value, fallback, now) {
     return base;
   }
 
+  const sourceOwned = value.owned && typeof value.owned === "object" ? value.owned : {};
+  const fallbackLastPayoutAt = Number.isFinite(value.lastPassiveTickAt) && value.lastPassiveTickAt > 0
+    ? Number(value.lastPassiveTickAt)
+    : now;
+  const normalizedOwned = {};
+  for (const [businessId, rawEntry] of Object.entries(sourceOwned)) {
+    const entry = rawEntry && typeof rawEntry === "object" ? rawEntry : {};
+    const tier = normalizeBusinessTier(entry.tier);
+    const payoutIntervalMs = getTierIntervalFromLabel(tier);
+    const upkeepRate = getTierUpkeepFromLabel(tier);
+    const qty = Math.max(0, Math.floor(numberOr(entry.qty, 0)));
+    const level = Math.max(1, Math.floor(numberOr(entry.level, 1)));
+    const lastPayoutAt = Number.isFinite(entry.lastPayoutAt) && entry.lastPayoutAt > 0
+      ? Number(entry.lastPayoutAt)
+      : fallbackLastPayoutAt;
+    const nextPayoutRaw = Number(entry.nextPayoutAt || 0);
+    const nextPayoutAt = Number.isFinite(nextPayoutRaw) && nextPayoutRaw > 0
+      ? Math.max(nextPayoutRaw, lastPayoutAt + payoutIntervalMs)
+      : (lastPayoutAt + payoutIntervalMs);
+
+    normalizedOwned[businessId] = {
+      ...entry,
+      qty,
+      level,
+      tier,
+      payoutIntervalMs,
+      upkeepRate,
+      paused: Boolean(entry.paused),
+      lastPayoutAt,
+      nextPayoutAt
+    };
+  }
+
   return {
+    ...value,
     buyMultiplier: value.buyMultiplier === 10 || value.buyMultiplier === "max" ? value.buyMultiplier : 1,
     lastPassiveTickAt: Number.isFinite(value.lastPassiveTickAt) && value.lastPassiveTickAt > 0
       ? value.lastPassiveTickAt
       : base.lastPassiveTickAt,
-    owned: value.owned && typeof value.owned === "object" ? value.owned : {}
+    owned: normalizedOwned
   };
 }
 
@@ -317,5 +363,47 @@ function normalizeQuestState(value, fallback) {
     progress: value.progress && typeof value.progress === "object" ? value.progress : {},
     completed: value.completed && typeof value.completed === "object" ? value.completed : {},
     claimed: value.claimed && typeof value.claimed === "object" ? value.claimed : {}
+  };
+}
+
+function normalizeBusinessTier(value) {
+  const key = String(value || "").trim().toLowerCase();
+  if (key === "low" || key === "mid" || key === "high" || key === "ultra") {
+    return key;
+  }
+  return "mid";
+}
+
+function getTierIntervalFromLabel(tier) {
+  if (tier === "low") return 5 * 60 * 1000;
+  if (tier === "mid") return 10 * 60 * 1000;
+  if (tier === "high") return 20 * 60 * 1000;
+  return 30 * 60 * 1000;
+}
+
+function getTierUpkeepFromLabel(tier) {
+  if (tier === "low") return 0.05;
+  if (tier === "mid") return 0.10;
+  if (tier === "high") return 0.15;
+  return 0.20;
+}
+
+function normalizeStateMeta(value, fallback) {
+  const base = fallback && typeof fallback === "object"
+    ? fallback
+    : {
+        schemaVersion: SCHEMA_VERSION,
+        revision: 0,
+        lastSaved: 0,
+        lastLoaded: Date.now()
+      };
+  if (!value || typeof value !== "object") {
+    return { ...base };
+  }
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    revision: Math.max(0, Math.floor(numberOr(value.revision, base.revision))),
+    lastSaved: Math.max(0, Math.floor(numberOr(value.lastSaved, base.lastSaved))),
+    lastLoaded: Math.max(0, Math.floor(numberOr(value.lastLoaded, base.lastLoaded)))
   };
 }
