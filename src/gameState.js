@@ -1,6 +1,6 @@
 import { createDefaultRealEstateState, ensureRealEstateState, getResidenceModifiers } from "./realEstate.js";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const DAILY_REWARD_MS = 24 * 60 * 60 * 1000;
 
@@ -25,6 +25,7 @@ export function createDefaultState(username, options = {}) {
     orders: [],
     inventory: [],
     activeAbility: null,
+    activeAbilities: [],
     boosts: {
       focusBurstUntil: 0
     },
@@ -79,7 +80,15 @@ export function migrateState(oldState, username) {
   ensureRealEstateState(state);
   state.orders = Array.isArray(state.orders) ? state.orders : [];
   state.inventory = Array.isArray(state.inventory) ? state.inventory : [];
-  state.activeAbility = state.activeAbility && typeof state.activeAbility === "object" ? state.activeAbility : null;
+  const legacyActiveAbility = state.activeAbility && typeof state.activeAbility === "object" ? state.activeAbility : null;
+  const activeAbilities = Array.isArray(state.activeAbilities)
+    ? state.activeAbilities.filter((entry) => entry && typeof entry === "object")
+    : [];
+  if (activeAbilities.length < 1 && legacyActiveAbility) {
+    activeAbilities.push(legacyActiveAbility);
+  }
+  state.activeAbilities = activeAbilities;
+  state.activeAbility = activeAbilities[0] || null;
   state.boosts = {
     ...fallback.boosts,
     ...(state.boosts && typeof state.boosts === "object" ? state.boosts : {})

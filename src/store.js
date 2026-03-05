@@ -8,6 +8,9 @@ const TIME_WARP_INTERVAL_MS = 10 * 60 * 1000;
 const JOB_SLOT_ITEM_ID = "job_slot_permit";
 const JOB_SLOT_BASE_COST = 1000;
 const JOB_SLOT_COST_GROWTH = 1.35;
+const ABILITY_SLOT_ITEM_ID = "ability_slot_permit";
+const ABILITY_SLOT_BASE_COST = 100000;
+const ABILITY_SLOT_COST_GROWTH = 1.55;
 
 export const STORE_ITEMS = [
   {
@@ -57,6 +60,14 @@ export const STORE_ITEMS = [
     price: JOB_SLOT_BASE_COST,
     ability: "Adds +1 permanent job slot.",
     abilityDuration: "Permanent"
+  },
+  {
+    id: ABILITY_SLOT_ITEM_ID,
+    name: "Item Slot Permit",
+    description: "Permanent +1 active ability slot. Buy repeatedly; each purchase costs more.",
+    price: ABILITY_SLOT_BASE_COST,
+    ability: "Lets you run one more store ability at the same time.",
+    abilityDuration: "Permanent"
   }
 ];
 
@@ -76,10 +87,14 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
     };
   }
 
-  if (item.id === JOB_SLOT_ITEM_ID) {
+  if (item.id === JOB_SLOT_ITEM_ID || item.id === ABILITY_SLOT_ITEM_ID) {
     state.money -= price;
     state.ownedItems = state.ownedItems && typeof state.ownedItems === "object" ? state.ownedItems : {};
-    state.ownedItems[JOB_SLOT_ITEM_ID] = getJobSlotPermitCount(state) + 1;
+    if (item.id === JOB_SLOT_ITEM_ID) {
+      state.ownedItems[JOB_SLOT_ITEM_ID] = getJobSlotPermitCount(state) + 1;
+    } else {
+      state.ownedItems[ABILITY_SLOT_ITEM_ID] = getAbilitySlotPermitCount(state) + 1;
+    }
     pushLog(state, `Purchased ${item.name} for $${price}.`, now);
 
     return {
@@ -118,11 +133,18 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
 }
 
 export function activateInventoryItem(state, itemId, now = Date.now()) {
-  const activeAbility = getActiveAbility(state, now);
-  if (activeAbility) {
+  const activeAbilities = getActiveAbilities(state, now);
+  const maxSlots = getMaxActiveAbilitySlots(state);
+  if (activeAbilities.length >= maxSlots) {
     return {
       ok: false,
-      message: "An ability is already active."
+      message: "All ability slots are in use."
+    };
+  }
+  if (activeAbilities.some((entry) => entry.itemId === itemId)) {
+    return {
+      ok: false,
+      message: "This ability is already active."
     };
   }
 
@@ -147,7 +169,7 @@ export function activateInventoryItem(state, itemId, now = Date.now()) {
     state.inventory = state.inventory.filter((item) => item.itemId !== itemId);
   }
 
-  state.activeAbility = {
+  const newAbility = {
     itemId: catalogItem.id,
     itemName: catalogItem.name,
     effect: catalogItem.ability,
@@ -155,6 +177,8 @@ export function activateInventoryItem(state, itemId, now = Date.now()) {
     expiresAt: now + ABILITY_DURATION_MS,
     nextInstantAt: catalogItem.id === "time_warp_chip" ? now + TIME_WARP_INTERVAL_MS : null
   };
+  state.activeAbilities = [...activeAbilities, newAbility];
+  state.activeAbility = state.activeAbilities[0] || null;
 
   pushLog(state, `Activated ${catalogItem.name} for 21 hours.`, now);
   return {
@@ -169,17 +193,22 @@ export function processStoreTimers(state, now = Date.now()) {
   };
   updateOrderStatuses(state, now, updates);
   deliverArrivedOrders(state, now);
-  expireAbility(state, now);
+  expireAbilities(state, now);
   processTimeWarpTicks(state, now);
   return updates;
 }
 
+export function getActiveAbilities(state, now = Date.now()) {
+  const all = normalizeActiveAbilities(state);
+  const active = all.filter((entry) => Number(entry.expiresAt || 0) > now);
+  state.activeAbilities = active;
+  state.activeAbility = active[0] || null;
+  return active;
+}
+
 export function getActiveAbility(state, now = Date.now()) {
-  const ability = state?.activeAbility;
-  if (!ability || typeof ability !== "object") {
-    return null;
-  }
-  return Number(ability.expiresAt || 0) > now ? ability : null;
+  const list = getActiveAbilities(state, now);
+  return list[0] || null;
 }
 
 export function getOrderStatus(order, now = Date.now()) {
@@ -201,21 +230,21 @@ export function getOrderStatus(order, now = Date.now()) {
 
 export function getPlayerEffects(state, now = Date.now()) {
   const focusBurstActive = Number(state?.boosts?.focusBurstUntil || 0) > now;
-  const activeAbility = getActiveAbility(state, now);
-  const abilityId = activeAbility?.itemId || "";
+  const activeAbilities = getActiveAbilities(state, now);
+  const activeIds = new Set(activeAbilities.map((entry) => entry.itemId));
   const levelBonusSlots = Math.max(0, Math.floor(Number(state?.level || 1)) - 1);
   const purchasedSlotBonus = getJobSlotPermitCount(state);
   const residenceModifiers = getResidenceModifiers(state);
 
   return {
-    payoutMultiplier: (1 + (focusBurstActive ? 0.35 : 0)) * (abilityId === "golden_calculator" ? 1.25 : 1),
-    xpMultiplier: abilityId === "focus_headphones" ? 1.5 : 1,
-    durationMultiplier: abilityId === "energy_drink" ? 0.8 : 1,
+    payoutMultiplier: (1 + (focusBurstActive ? 0.35 : 0)) * (activeIds.has("golden_calculator") ? 1.25 : 1),
+    xpMultiplier: activeIds.has("focus_headphones") ? 1.5 : 1,
+    durationMultiplier: activeIds.has("energy_drink") ? 0.8 : 1,
     cooldownMultiplier: 1,
     streakWindowMs: 12 * 60 * 60 * 1000,
     maxActiveJobs: 3 + levelBonusSlots + purchasedSlotBonus + Math.max(0, Number(residenceModifiers.jobSlotsBonus || 0)),
     focusBurstActive,
-    luckyDoubleChance: abilityId === "lucky_coin" ? 0.12 : 0
+    luckyDoubleChance: activeIds.has("lucky_coin") ? 0.12 : 0
   };
 }
 
@@ -224,8 +253,16 @@ export function getStoreItemPrice(state, itemId) {
     const owned = getJobSlotPermitCount(state);
     return Math.max(1, Math.round(JOB_SLOT_BASE_COST * (JOB_SLOT_COST_GROWTH ** owned)));
   }
+  if (itemId === ABILITY_SLOT_ITEM_ID) {
+    const owned = getAbilitySlotPermitCount(state);
+    return Math.max(1, Math.round(ABILITY_SLOT_BASE_COST * (ABILITY_SLOT_COST_GROWTH ** owned)));
+  }
   const item = STORE_ITEMS.find((entry) => entry.id === itemId);
   return item ? item.price : 0;
+}
+
+export function getMaxActiveAbilitySlots(state) {
+  return 1 + getAbilitySlotPermitCount(state);
 }
 
 export function awardXp(state, amount, now = Date.now()) {
@@ -283,20 +320,26 @@ function addInventoryItem(state, order) {
   state.inventory = list;
 }
 
-function expireAbility(state, now) {
-  const active = state?.activeAbility;
-  if (!active || typeof active !== "object") {
+function expireAbilities(state, now) {
+  const all = normalizeActiveAbilities(state);
+  if (all.length < 1) {
     return;
   }
-  if (Number(active.expiresAt || 0) <= now) {
-    pushLog(state, `${active.itemName} ability expired.`, now);
-    state.activeAbility = null;
+  const remaining = [];
+  for (const ability of all) {
+    if (Number(ability.expiresAt || 0) <= now) {
+      pushLog(state, `${ability.itemName} ability expired.`, now);
+      continue;
+    }
+    remaining.push(ability);
   }
+  state.activeAbilities = remaining;
+  state.activeAbility = remaining[0] || null;
 }
 
 function processTimeWarpTicks(state, now) {
-  const active = getActiveAbility(state, now);
-  if (!active || active.itemId !== "time_warp_chip") {
+  const active = getActiveAbilities(state, now).find((entry) => entry.itemId === "time_warp_chip");
+  if (!active) {
     return;
   }
 
@@ -340,4 +383,21 @@ function randomInt(min, max) {
 
 function getJobSlotPermitCount(state) {
   return Math.max(0, Math.floor(Number(state?.ownedItems?.[JOB_SLOT_ITEM_ID] || 0)));
+}
+
+function getAbilitySlotPermitCount(state) {
+  return Math.max(0, Math.floor(Number(state?.ownedItems?.[ABILITY_SLOT_ITEM_ID] || 0)));
+}
+
+function normalizeActiveAbilities(state) {
+  const fromList = Array.isArray(state?.activeAbilities)
+    ? state.activeAbilities.filter((entry) => entry && typeof entry === "object")
+    : [];
+  const legacy = state?.activeAbility && typeof state.activeAbility === "object"
+    ? [state.activeAbility]
+    : [];
+  const merged = fromList.length > 0 ? fromList : legacy;
+  state.activeAbilities = merged;
+  state.activeAbility = merged[0] || null;
+  return merged;
 }

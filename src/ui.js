@@ -18,7 +18,15 @@ import {
   getResidenceState,
   getResidenceUpgradeCost
 } from "./realEstate.js";
-import { ABILITY_DURATION_MS, STORE_ITEMS, getActiveAbility, getOrderStatus, getPlayerEffects, getStoreItemPrice } from "./store.js";
+import {
+  ABILITY_DURATION_MS,
+  STORE_ITEMS,
+  getActiveAbilities,
+  getOrderStatus,
+  getPlayerEffects,
+  getStoreItemPrice,
+  getMaxActiveAbilitySlots
+} from "./store.js";
 
 export function renderApp(root, viewModel, handlers) {
   if (!root) {
@@ -59,7 +67,6 @@ function renderGame(viewModel) {
   const now = Date.now();
   const effects = getPlayerEffects(state, now);
   const activeTab = state?.settings?.activeTab || "dashboard";
-  const readyJobs = state.activeJobs.filter((job) => job.endsAt <= now);
 
   return `
     <section class="section-stack">
@@ -72,7 +79,6 @@ function renderGame(viewModel) {
         </div>
         <div class="top-actions">
           <button id="dailyBtn" class="btn">Claim Daily</button>
-          <button id="claimJobsBtn" class="btn secondary" ${readyJobs.length < 1 ? "disabled" : ""}>Claim Ready</button>
           <button id="saveNowBtn" class="btn secondary">Save</button>
           <button id="logoutBtn" class="btn danger">Logout</button>
         </div>
@@ -122,8 +128,9 @@ function renderDashboardTab(state, effects, now) {
   const xpNeeded = xpRequiredForLevel(state.level);
   const xpPercent = Math.min(100, (state.xp / xpNeeded) * 100);
   const nextDaily = Number(state.daily.nextClaimAt || 0);
-  const activeAbility = getActiveAbility(state, now);
-  const abilityRemaining = activeAbility ? Math.max(0, Number(activeAbility.expiresAt || 0) - now) : 0;
+  const readyJobsCount = state.activeJobs.filter((job) => job.endsAt <= now).length;
+  const activeAbilities = getActiveAbilities(state, now);
+  const maxAbilitySlots = getMaxActiveAbilitySlots(state);
 
   return `
     <section class="grid two">
@@ -154,11 +161,15 @@ function renderDashboardTab(state, effects, now) {
           <div class="job-row">
             <div class="row-head">
               <strong>Active Store Ability</strong>
-              <span class="rarity-pill legendary">${activeAbility ? "active" : "none"}</span>
+              <span class="rarity-pill legendary">${activeAbilities.length}/${maxAbilitySlots} active</span>
             </div>
-            ${activeAbility
-              ? `<div class="row-meta">${escapeHtml(activeAbility.itemName)}: ${escapeHtml(activeAbility.effect)}</div>
-                 <div class="row-meta">Time remaining: ${formatCountdown(abilityRemaining)}</div>`
+            ${activeAbilities.length
+              ? activeAbilities
+                .map((ability) => {
+                  const abilityRemaining = Math.max(0, Number(ability.expiresAt || 0) - now);
+                  return `<div class="row-meta">${escapeHtml(ability.itemName)}: ${escapeHtml(ability.effect)} (${formatCountdown(abilityRemaining)} left)</div>`;
+                })
+                .join("")
               : '<div class="row-meta">No active store ability.</div>'}
           </div>
         </div>
@@ -166,7 +177,10 @@ function renderDashboardTab(state, effects, now) {
       </article>
 
       <article class="card">
-        <h2>Active Jobs</h2>
+        <div class="row-head">
+          <h2>Active Jobs</h2>
+          <button id="claimJobsBtn" class="btn secondary" ${readyJobsCount < 1 ? "disabled" : ""}>Claim Ready</button>
+        </div>
         <p class="hint">${state.activeJobs.length} active / ${effects.maxActiveJobs} slots${state.activeJobs.length > 5 ? " • scroll for more" : ""}</p>
         <div class="list active-jobs-list">
           ${state.activeJobs.length
@@ -236,9 +250,9 @@ function renderStoreTab(state) {
           <div class="job-row">
             <div class="row-head">
               <strong>Activation Rule</strong>
-              <span class="badge processing">one at a time</span>
+              <span class="badge processing">slot-based</span>
             </div>
-            <div class="row-meta">Only one store ability can be active at once.</div>
+            <div class="row-meta">You can run multiple abilities based on your Item Slot Permit count.</div>
           </div>
         </div>
       </article>
@@ -466,13 +480,15 @@ function renderOrderCard(order, now) {
 
 function renderInventoryTab(state, now) {
   const inventory = Array.isArray(state.inventory) ? state.inventory : [];
-  const activeAbility = getActiveAbility(state, now);
-  const remainingMs = activeAbility ? Math.max(0, Number(activeAbility.expiresAt || 0) - now) : 0;
+  const activeAbilities = getActiveAbilities(state, now);
+  const maxAbilitySlots = getMaxActiveAbilitySlots(state);
+  const slotsUsed = activeAbilities.length;
 
   return `
     <section class="grid two">
       <article class="card">
         <h2>Inventory</h2>
+        <p class="hint">Ability slots: ${slotsUsed} / ${maxAbilitySlots}</p>
         <div class="list">
           ${inventory.length
             ? inventory.map((entry) => `
@@ -487,7 +503,7 @@ function renderInventoryTab(state, now) {
                   class="btn secondary"
                   data-action="activate-item"
                   data-id="${entry.itemId}"
-                  ${(activeAbility || Number(entry.qty || 0) < 1) ? "disabled" : ""}
+                  ${(slotsUsed >= maxAbilitySlots || Number(entry.qty || 0) < 1 || activeAbilities.some((ability) => ability.itemId === entry.itemId)) ? "disabled" : ""}
                 >
                   Activate
                 </button>
@@ -498,16 +514,23 @@ function renderInventoryTab(state, now) {
       </article>
 
       <article class="card">
-        <h2>Active Ability</h2>
-        ${activeAbility
+        <h2>Active Abilities</h2>
+        ${activeAbilities.length
           ? `
-            <div class="job-row">
-              <div class="row-head">
-                <strong>${escapeHtml(activeAbility.itemName)}</strong>
-                <span class="badge delivered">active</span>
-              </div>
-              <div class="row-meta">${escapeHtml(activeAbility.effect)}</div>
-              <div class="row-meta">Time remaining: ${formatCountdown(remainingMs)}</div>
+            <div class="list compact-list">
+              ${activeAbilities.map((ability) => {
+                const remainingMs = Math.max(0, Number(ability.expiresAt || 0) - now);
+                return `
+                  <div class="job-row">
+                    <div class="row-head">
+                      <strong>${escapeHtml(ability.itemName)}</strong>
+                      <span class="badge delivered">active</span>
+                    </div>
+                    <div class="row-meta">${escapeHtml(ability.effect)}</div>
+                    <div class="row-meta">Time remaining: ${formatCountdown(remainingMs)}</div>
+                  </div>
+                `;
+              }).join("")}
             </div>
           `
           : '<p class="hint empty-state">No ability is active.</p>'}
