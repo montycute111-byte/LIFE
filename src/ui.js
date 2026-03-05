@@ -51,9 +51,11 @@ export function renderApp(root, viewModel, handlers) {
     return;
   }
 
+  const preservedTabScroll = captureTabScrollPositions(root);
   root.innerHTML = viewModel.session
     ? renderGame(viewModel)
     : renderAuth(viewModel);
+  restoreTabScrollPositions(root, preservedTabScroll);
 
   bindEvents(root, viewModel, handlers);
 }
@@ -103,7 +105,7 @@ function renderGame(viewModel) {
       </header>
 
       <section class="card app-nav-card">
-        <div class="top-actions tab-strip">
+        <div class="top-actions tab-strip" data-scroll-key="main-tabs">
           <button class="tab-btn ${activeTab === "dashboard" ? "active" : ""}" data-action="tab" data-tab="dashboard">Dashboard</button>
           <button class="tab-btn ${activeTab === "jobs" ? "active" : ""}" data-action="tab" data-tab="jobs">All Jobs</button>
           <button class="tab-btn ${activeTab === "businesses" ? "active" : ""}" data-action="tab" data-tab="businesses">Businesses</button>
@@ -588,7 +590,7 @@ function renderStoreTab(state, now, forcedStoreTab = null) {
         <div class="row-head">
           <h2>Store</h2>
         </div>
-        <div class="top-actions tab-strip">
+        <div class="top-actions tab-strip" data-scroll-key="store-tabs">
           <button class="tab-btn ${currentStoreTab === "items" ? "active" : ""}" data-action="store-tab" data-tab="items">Items</button>
           <button class="tab-btn ${currentStoreTab === "power" ? "active" : ""}" data-action="store-tab" data-tab="power">Power Items</button>
         </div>
@@ -730,7 +732,7 @@ function renderAllJobsTab(state, effects) {
   return `
     <section class="card">
       <h2>All Jobs</h2>
-      <div class="top-actions tab-strip">
+      <div class="top-actions tab-strip" data-scroll-key="jobs-tabs">
         <button class="tab-btn ${jobsSubTab === "core" ? "active" : ""}" data-action="jobs-subtab" data-tab="core">Core</button>
         <button class="tab-btn ${jobsSubTab === "hs" ? "active" : ""}" data-action="jobs-subtab" data-tab="hs">High School</button>
         <button class="tab-btn ${jobsSubTab === "college" ? "active" : ""}" data-action="jobs-subtab" data-tab="college">College</button>
@@ -1157,6 +1159,30 @@ function readAuthValues(root) {
     username: root.querySelector("#usernameInput")?.value || "",
     password: root.querySelector("#passwordInput")?.value || ""
   };
+}
+
+function captureTabScrollPositions(root) {
+  const positions = {};
+  root.querySelectorAll(".tab-strip[data-scroll-key]").forEach((strip) => {
+    const key = strip.dataset.scrollKey;
+    if (key) {
+      positions[key] = strip.scrollLeft;
+    }
+  });
+  return positions;
+}
+
+function restoreTabScrollPositions(root, positions) {
+  if (!positions || typeof positions !== "object") {
+    return;
+  }
+  root.querySelectorAll(".tab-strip[data-scroll-key]").forEach((strip) => {
+    const key = strip.dataset.scrollKey;
+    if (!key || typeof positions[key] !== "number") {
+      return;
+    }
+    strip.scrollLeft = positions[key];
+  });
 }
 
 function formatCountdown(ms) {
