@@ -375,10 +375,8 @@ function normalizeBusinessTier(value) {
 }
 
 function getTierIntervalFromLabel(tier) {
-  if (tier === "low") return 5 * 60 * 1000;
-  if (tier === "mid") return 10 * 60 * 1000;
-  if (tier === "high") return 20 * 60 * 1000;
-  return 30 * 60 * 1000;
+  void tier;
+  return 15 * 60 * 1000;
 }
 
 function getTierUpkeepFromLabel(tier) {

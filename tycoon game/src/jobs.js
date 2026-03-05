@@ -215,6 +215,456 @@ export const JOBS = [
     xp: 27200,
     levelRequired: 220,
     educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_01",
+    name: "Apex Treasury Operation 1",
+    durationMs: 7200 * 1000,
+    payout: 3600000,
+    xp: 32000,
+    levelRequired: 240,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_02",
+    name: "Apex Treasury Operation 2",
+    durationMs: 7380 * 1000,
+    payout: 3978000,
+    xp: 35500,
+    levelRequired: 245,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_03",
+    name: "Apex Treasury Operation 3",
+    durationMs: 7560 * 1000,
+    payout: 4395690,
+    xp: 39000,
+    levelRequired: 250,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_04",
+    name: "Apex Treasury Operation 4",
+    durationMs: 7740 * 1000,
+    payout: 4857237,
+    xp: 42500,
+    levelRequired: 255,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_05",
+    name: "Apex Treasury Operation 5",
+    durationMs: 7920 * 1000,
+    payout: 5367247,
+    xp: 46000,
+    levelRequired: 260,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_06",
+    name: "Apex Treasury Operation 6",
+    durationMs: 8100 * 1000,
+    payout: 5930808,
+    xp: 49500,
+    levelRequired: 265,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_07",
+    name: "Apex Treasury Operation 7",
+    durationMs: 8280 * 1000,
+    payout: 6553543,
+    xp: 53000,
+    levelRequired: 270,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_08",
+    name: "Apex Treasury Operation 8",
+    durationMs: 8460 * 1000,
+    payout: 7241665,
+    xp: 56500,
+    levelRequired: 275,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_09",
+    name: "Apex Treasury Operation 9",
+    durationMs: 8640 * 1000,
+    payout: 8002040,
+    xp: 60000,
+    levelRequired: 280,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_10",
+    name: "Apex Treasury Operation 10",
+    durationMs: 8820 * 1000,
+    payout: 8842254,
+    xp: 63500,
+    levelRequired: 285,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_11",
+    name: "Apex Treasury Operation 11",
+    durationMs: 9000 * 1000,
+    payout: 9770691,
+    xp: 67000,
+    levelRequired: 290,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_12",
+    name: "Apex Treasury Operation 12",
+    durationMs: 9180 * 1000,
+    payout: 10796614,
+    xp: 70500,
+    levelRequired: 295,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_13",
+    name: "Apex Treasury Operation 13",
+    durationMs: 9360 * 1000,
+    payout: 11930258,
+    xp: 74000,
+    levelRequired: 300,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_14",
+    name: "Apex Treasury Operation 14",
+    durationMs: 9540 * 1000,
+    payout: 13182935,
+    xp: 77500,
+    levelRequired: 305,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_15",
+    name: "Apex Treasury Operation 15",
+    durationMs: 9720 * 1000,
+    payout: 14567143,
+    xp: 81000,
+    levelRequired: 310,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_16",
+    name: "Apex Treasury Operation 16",
+    durationMs: 9900 * 1000,
+    payout: 16096693,
+    xp: 84500,
+    levelRequired: 315,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_17",
+    name: "Apex Treasury Operation 17",
+    durationMs: 10080 * 1000,
+    payout: 17786846,
+    xp: 88000,
+    levelRequired: 320,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_18",
+    name: "Apex Treasury Operation 18",
+    durationMs: 10260 * 1000,
+    payout: 19654465,
+    xp: 91500,
+    levelRequired: 325,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_19",
+    name: "Apex Treasury Operation 19",
+    durationMs: 10440 * 1000,
+    payout: 21718184,
+    xp: 95000,
+    levelRequired: 330,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_20",
+    name: "Apex Treasury Operation 20",
+    durationMs: 10620 * 1000,
+    payout: 23998593,
+    xp: 98500,
+    levelRequired: 335,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_21",
+    name: "Apex Treasury Operation 21",
+    durationMs: 10800 * 1000,
+    payout: 26518445,
+    xp: 102000,
+    levelRequired: 340,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_22",
+    name: "Apex Treasury Operation 22",
+    durationMs: 10980 * 1000,
+    payout: 29302882,
+    xp: 105500,
+    levelRequired: 345,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_23",
+    name: "Apex Treasury Operation 23",
+    durationMs: 11160 * 1000,
+    payout: 32379685,
+    xp: 109000,
+    levelRequired: 350,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_24",
+    name: "Apex Treasury Operation 24",
+    durationMs: 11340 * 1000,
+    payout: 35779552,
+    xp: 112500,
+    levelRequired: 355,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_25",
+    name: "Apex Treasury Operation 25",
+    durationMs: 11520 * 1000,
+    payout: 39536405,
+    xp: 116000,
+    levelRequired: 360,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_26",
+    name: "Apex Treasury Operation 26",
+    durationMs: 11700 * 1000,
+    payout: 43687727,
+    xp: 119500,
+    levelRequired: 365,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_27",
+    name: "Apex Treasury Operation 27",
+    durationMs: 11880 * 1000,
+    payout: 48274939,
+    xp: 123000,
+    levelRequired: 370,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_28",
+    name: "Apex Treasury Operation 28",
+    durationMs: 12060 * 1000,
+    payout: 53343807,
+    xp: 126500,
+    levelRequired: 375,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_29",
+    name: "Apex Treasury Operation 29",
+    durationMs: 12240 * 1000,
+    payout: 58944907,
+    xp: 130000,
+    levelRequired: 380,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_30",
+    name: "Apex Treasury Operation 30",
+    durationMs: 12420 * 1000,
+    payout: 65134122,
+    xp: 133500,
+    levelRequired: 385,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_31",
+    name: "Apex Treasury Operation 31",
+    durationMs: 12600 * 1000,
+    payout: 71973205,
+    xp: 137000,
+    levelRequired: 390,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_32",
+    name: "Apex Treasury Operation 32",
+    durationMs: 12780 * 1000,
+    payout: 79530391,
+    xp: 140500,
+    levelRequired: 395,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_33",
+    name: "Apex Treasury Operation 33",
+    durationMs: 12960 * 1000,
+    payout: 87881082,
+    xp: 144000,
+    levelRequired: 400,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_34",
+    name: "Apex Treasury Operation 34",
+    durationMs: 13140 * 1000,
+    payout: 97108596,
+    xp: 147500,
+    levelRequired: 405,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_35",
+    name: "Apex Treasury Operation 35",
+    durationMs: 13320 * 1000,
+    payout: 107304999,
+    xp: 151000,
+    levelRequired: 410,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_36",
+    name: "Apex Treasury Operation 36",
+    durationMs: 13500 * 1000,
+    payout: 118572024,
+    xp: 154500,
+    levelRequired: 415,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_37",
+    name: "Apex Treasury Operation 37",
+    durationMs: 13680 * 1000,
+    payout: 131022086,
+    xp: 158000,
+    levelRequired: 420,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_38",
+    name: "Apex Treasury Operation 38",
+    durationMs: 13860 * 1000,
+    payout: 144779405,
+    xp: 161500,
+    levelRequired: 425,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_39",
+    name: "Apex Treasury Operation 39",
+    durationMs: 14040 * 1000,
+    payout: 159981243,
+    xp: 165000,
+    levelRequired: 430,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_40",
+    name: "Apex Treasury Operation 40",
+    durationMs: 14220 * 1000,
+    payout: 176779273,
+    xp: 168500,
+    levelRequired: 435,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_41",
+    name: "Apex Treasury Operation 41",
+    durationMs: 14400 * 1000,
+    payout: 195341097,
+    xp: 172000,
+    levelRequired: 440,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_42",
+    name: "Apex Treasury Operation 42",
+    durationMs: 14580 * 1000,
+    payout: 215851912,
+    xp: 175500,
+    levelRequired: 445,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_43",
+    name: "Apex Treasury Operation 43",
+    durationMs: 14760 * 1000,
+    payout: 238516363,
+    xp: 179000,
+    levelRequired: 450,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_44",
+    name: "Apex Treasury Operation 44",
+    durationMs: 14940 * 1000,
+    payout: 263560581,
+    xp: 182500,
+    levelRequired: 455,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_45",
+    name: "Apex Treasury Operation 45",
+    durationMs: 15120 * 1000,
+    payout: 291234442,
+    xp: 186000,
+    levelRequired: 460,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_46",
+    name: "Apex Treasury Operation 46",
+    durationMs: 15300 * 1000,
+    payout: 321814058,
+    xp: 189500,
+    levelRequired: 465,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_47",
+    name: "Apex Treasury Operation 47",
+    durationMs: 15480 * 1000,
+    payout: 355604534,
+    xp: 193000,
+    levelRequired: 470,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_48",
+    name: "Apex Treasury Operation 48",
+    durationMs: 15660 * 1000,
+    payout: 392943010,
+    xp: 196500,
+    levelRequired: 475,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_49",
+    name: "Apex Treasury Operation 49",
+    durationMs: 15840 * 1000,
+    payout: 434202026,
+    xp: 200000,
+    levelRequired: 480,
+    educationRequired: "college"
+  },
+  {
+    id: "apex_treasury_50",
+    name: "Apex Treasury Operation 50",
+    durationMs: 16020 * 1000,
+    payout: 479793239,
+    xp: 203500,
+    levelRequired: 485,
+    educationRequired: "college"
   }
 ];
 

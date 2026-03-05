@@ -852,8 +852,8 @@ function renderBusinessesTab(state, now) {
             <strong>$${formatNumber(totalPayoutPerMinute)} / min</strong>
           </div>
           <div class="business-stat-chip">
-            <span>Payout tiers</span>
-            <strong>Low 5m • Mid 10m • High 20m • Ultra 30m</strong>
+            <span>Payout interval</span>
+            <strong>Every 15 minutes</strong>
           </div>
         </div>
       </article>

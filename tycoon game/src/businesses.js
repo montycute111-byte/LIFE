@@ -7,10 +7,10 @@ import { getRebirthRuntimeModifiers } from "./rebirth.js";
 const OFFLINE_CAP_SECONDS = 12 * 60 * 60;
 const MAX_BUY_ITERATIONS = 500;
 const TIER_INTERVAL_MS = {
-  low: 5 * 60 * 1000,
-  mid: 10 * 60 * 1000,
-  high: 20 * 60 * 1000,
-  ultra: 30 * 60 * 1000
+  low: 15 * 60 * 1000,
+  mid: 15 * 60 * 1000,
+  high: 15 * 60 * 1000,
+  ultra: 15 * 60 * 1000
 };
 const TIER_UPKEEP_RATE = {
   low: 0.05,
