@@ -1,10 +1,18 @@
 import { useMemo, useState } from "react";
-import { activatePowerup, buyPowerup, claimDailyChest, useTimeWarp } from "../lib/game";
+import {
+  activatePowerup,
+  buyCosmetic,
+  buyPowerup,
+  claimDailyChest,
+  listCosmetics,
+  useTimeWarp
+} from "../lib/game";
 import { useAppStore } from "../store/AppStore";
 
 export default function RewardsPage() {
   const { userState, updateState, setAppError } = useAppStore();
   const [warpBlockId, setWarpBlockId] = useState("");
+  const cosmetics = listCosmetics();
 
   const incompleteBlocks = useMemo(() => {
     const done = new Set(userState.schedule.completedBlockIds || []);
@@ -110,6 +118,30 @@ export default function RewardsPage() {
           </div>
         </article>
       </div>
+
+      <article className="card">
+        <h2>Cosmetics Shop</h2>
+        <ul className="list-clean block-list">
+          {cosmetics.map((cosmetic) => {
+            const owned = userState.inventory.cosmetics.includes(cosmetic.id);
+            return (
+              <li key={cosmetic.id} className="task-row">
+                <div>
+                  <strong>{cosmetic.name}</strong>
+                  <p className="muted">Cost: {cosmetic.cost} coins</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={owned}
+                  onClick={() => applyResult(buyCosmetic(userState, cosmetic.id), `${cosmetic.name} unlocked.`)}
+                >
+                  {owned ? "Owned" : "Buy cosmetic"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </article>
     </section>
   );
 }

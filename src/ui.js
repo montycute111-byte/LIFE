@@ -88,7 +88,7 @@ function renderGame(viewModel) {
 
   return `
     <section class="section-stack">
-      <header class="topbar card">
+      <header class="topbar card app-topbar">
         <div>
           <h1>Fake Bank Account Simulator</h1>
           <p class="sub">Current user: ${escapeHtml(session.username)}${session.isGuest ? " (guest)" : ""}</p>
@@ -102,7 +102,7 @@ function renderGame(viewModel) {
         </div>
       </header>
 
-      <section class="card">
+      <section class="card app-nav-card">
         <div class="top-actions tab-strip">
           <button class="tab-btn ${activeTab === "dashboard" ? "active" : ""}" data-action="tab" data-tab="dashboard">Dashboard</button>
           <button class="tab-btn ${activeTab === "jobs" ? "active" : ""}" data-action="tab" data-tab="jobs">All Jobs</button>

@@ -53,6 +53,11 @@ const DEFAULT_POWERUPS = [
 ];
 
 const ACHIEVEMENT_KEYS = ["first_task", "perfect_day", "7_day_streak", "100_tasks", "early_bird", "night_owl"];
+const COSMETIC_CATALOG = [
+  { id: "skin_sunrise", name: "Sunrise Frame", cost: 70 },
+  { id: "skin_mint", name: "Mint Streak Trail", cost: 95 },
+  { id: "skin_pixel", name: "Pixel Hero Border", cost: 120 }
+];
 
 function cloneState(state) {
   if (typeof structuredClone === "function") {
@@ -137,7 +142,8 @@ export function createDefaultState(username, createdAt = Date.now()) {
     },
     daily: createDaily(todayISO),
     inventory: {
-      badges: []
+      badges: [],
+      cosmetics: []
     }
   };
 }
@@ -491,7 +497,8 @@ export function hydrateUserState(rawState, username, createdAt) {
       }
     },
     inventory: {
-      badges: Array.isArray(rawState.inventory?.badges) ? rawState.inventory.badges : []
+      badges: Array.isArray(rawState.inventory?.badges) ? rawState.inventory.badges : [],
+      cosmetics: Array.isArray(rawState.inventory?.cosmetics) ? rawState.inventory.cosmetics : []
     }
   };
 
@@ -755,6 +762,27 @@ export function buyPowerup(state, powerupId) {
   }
   next.stats.coins -= powerup.cost;
   powerup.owned += 1;
+  return { state: next };
+}
+
+export function listCosmetics() {
+  return COSMETIC_CATALOG;
+}
+
+export function buyCosmetic(state, cosmeticId) {
+  const next = applyDailyRollover(state);
+  const cosmetic = COSMETIC_CATALOG.find((item) => item.id === cosmeticId);
+  if (!cosmetic) {
+    return { state: next, error: "Cosmetic not found." };
+  }
+  if (next.inventory.cosmetics.includes(cosmeticId)) {
+    return { state: next, error: "Cosmetic already owned." };
+  }
+  if (next.stats.coins < cosmetic.cost) {
+    return { state: next, error: "Not enough coins." };
+  }
+  next.stats.coins -= cosmetic.cost;
+  next.inventory.cosmetics.push(cosmeticId);
   return { state: next };
 }
 

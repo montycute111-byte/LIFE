@@ -104,7 +104,15 @@ export default function AuthPage() {
         {Object.keys(accounts).length === 0 ? <p>No local accounts yet.</p> : (
           <ul className="list-clean">
             {Object.keys(accounts).sort().map((username) => (
-              <li key={username}>{username}</li>
+              <li key={username} className="task-row">
+                <span>{username}</span>
+                <button
+                  type="button"
+                  onClick={() => setLoginForm((prev) => ({ ...prev, username }))}
+                >
+                  Use
+                </button>
+              </li>
             ))}
           </ul>
         )}

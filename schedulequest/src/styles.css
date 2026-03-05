@@ -276,6 +276,10 @@ body[data-theme="light"] .task-row {
   margin: 0;
 }
 
+.task-row > button {
+  width: auto;
+}
+
 .row-actions {
   display: flex;
   gap: 6px;
