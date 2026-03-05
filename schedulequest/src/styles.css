@@ -491,3 +491,153 @@ body[data-theme="light"] .task-row {
     grid-template-columns: 48px 1fr;
   }
 }
+
+/* Mobile app shell */
+.app-frame,
+.auth-page {
+  width: min(460px, 100%);
+  margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom));
+}
+
+.app-frame main {
+  display: grid;
+  gap: 12px;
+}
+
+.topbar {
+  position: sticky;
+  top: calc(6px + env(safe-area-inset-top));
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 18px;
+}
+
+.topbar-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.topbar-actions button {
+  width: auto;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+}
+
+.brand {
+  font-size: 1.05rem;
+}
+
+.brand-sub {
+  font-size: 0.75rem;
+}
+
+.wallet {
+  display: flex;
+  gap: 6px;
+  text-align: left;
+  flex-wrap: wrap;
+}
+
+.wallet p {
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.76rem;
+}
+
+.bottom-tabs {
+  position: fixed;
+  left: 50%;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(440px, calc(100% - 16px));
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(11, 23, 39, 0.92);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+body[data-theme="light"] .bottom-tabs {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.bottom-tabs a {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.bottom-tabs a.active {
+  color: var(--text);
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.18);
+}
+
+.card {
+  border-radius: 16px;
+  padding: 12px;
+}
+
+input,
+textarea,
+select,
+button {
+  min-height: 42px;
+  border-radius: 12px;
+}
+
+.row-actions button {
+  min-height: 38px;
+}
+
+.task-row {
+  align-items: flex-start;
+}
+
+.task-row > div:last-child,
+.row-actions {
+  width: 100%;
+}
+
+.row-actions {
+  justify-content: flex-end;
+}
+
+@media (min-width: 1000px) {
+  .app-frame,
+  .auth-page {
+    width: min(920px, calc(100% - 32px));
+    padding-bottom: 24px;
+  }
+
+  .bottom-tabs {
+    position: static;
+    transform: none;
+    width: 100%;
+    margin-bottom: 12px;
+  }
+}

@@ -16,27 +16,33 @@ export default function NavBar() {
   }
 
   return (
-    <header className="topbar">
-      <div className="brand-wrap">
-        <Link to="/today" className="brand">ScheduleQuest</Link>
-        <p className="brand-sub">{activeUser}</p>
-      </div>
+    <>
+      <header className="topbar">
+        <div className="topbar-main">
+          <div className="brand-wrap">
+            <Link to="/today" className="brand">ScheduleQuest</Link>
+            <p className="brand-sub">{activeUser}</p>
+          </div>
+          <div className="topbar-actions">
+            <button type="button" onClick={() => navigate("/auth")}>Switch</button>
+            <button type="button" onClick={handleLogout}>Logout</button>
+          </div>
+        </div>
 
-      <nav className="tabs" aria-label="Main navigation">
+        <div className="wallet">
+          <p>Lvl {userState.stats.level}</p>
+          <p>{userState.stats.xp}/{xpToNextLevel(userState.stats.level)} XP</p>
+          <p>{userState.stats.coins} coins</p>
+        </div>
+      </header>
+
+      <nav className="bottom-tabs" aria-label="Main navigation">
         <NavLink to="/today">Today</NavLink>
         <NavLink to="/tasks">Tasks</NavLink>
         <NavLink to="/rewards">Rewards</NavLink>
         <NavLink to="/stats">Stats</NavLink>
         <NavLink to="/settings">Settings</NavLink>
       </nav>
-
-      <div className="wallet">
-        <p>Lvl {userState.stats.level}</p>
-        <p>{userState.stats.xp}/{xpToNextLevel(userState.stats.level)} XP</p>
-        <p>{userState.stats.coins} coins</p>
-        <button type="button" onClick={() => navigate("/auth")}>Switch user</button>
-        <button type="button" onClick={handleLogout}>Logout</button>
-      </div>
-    </header>
+    </>
   );
 }

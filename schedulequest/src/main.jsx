@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { HashRouter } from "react-router-dom";
 import App from "./App";
 import { AppStoreProvider } from "./store/AppStore";
 import "./styles.css";
@@ -13,10 +13,10 @@ if ("serviceWorker" in navigator) {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <HashRouter>
       <AppStoreProvider>
         <App />
       </AppStoreProvider>
-    </BrowserRouter>
+    </HashRouter>
   </React.StrictMode>
 );
