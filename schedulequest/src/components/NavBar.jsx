@@ -34,6 +34,7 @@ export default function NavBar() {
         <p>Lvl {userState.stats.level}</p>
         <p>{userState.stats.xp}/{xpToNextLevel(userState.stats.level)} XP</p>
         <p>{userState.stats.coins} coins</p>
+        <button type="button" onClick={() => navigate("/auth")}>Switch user</button>
         <button type="button" onClick={handleLogout}>Logout</button>
       </div>
     </header>
