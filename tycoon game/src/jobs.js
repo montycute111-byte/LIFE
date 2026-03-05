@@ -1,3 +1,4 @@
+import { getCrateBoostMultipliers, getInstantJobTokenCount, maybeAwardCrate } from "./crates.js";
 import { pushLog } from "./gameState.js";
 import { getResidenceModifiers } from "./realEstate.js";
 import { awardXp, getPlayerEffects, processStoreTimers } from "./store.js";
@@ -200,8 +201,14 @@ export function startJob(state, jobId, now = Date.now()) {
 
   const { job, effects } = result;
   const streakBonus = Math.min(state.streak.count * 0.05, 0.35);
+  const crateBoosts = getCrateBoostMultipliers(state, now);
   const durationMs = Math.max(5 * 1000, Math.round(job.durationMs * effects.durationMultiplier));
-  const payout = Math.round(job.payout * effects.payoutMultiplier * (1 + streakBonus));
+  const payout = Math.round(
+    job.payout
+    * effects.payoutMultiplier
+    * (1 + streakBonus)
+    * Math.max(0, Number(crateBoosts.jobPayoutMultiplier || 1))
+  );
   const xp = Math.round(job.xp * effects.xpMultiplier);
 
   state.activeJobs.push({
@@ -265,6 +272,12 @@ export function claimReadyJobs(state, now = Date.now()) {
 
   const effects = getPlayerEffects(state, now);
   const residenceModifiers = getResidenceModifiers(state);
+  const crateDrops = {
+    common: 0,
+    rare: 0,
+    epic: 0,
+    legendary: 0
+  };
   let totalCash = 0;
   let totalXp = 0;
 
@@ -275,6 +288,10 @@ export function claimReadyJobs(state, now = Date.now()) {
 
     const baseXp = Math.max(1, Math.round(job.xp * JOB_XP_CLAIM_MULTIPLIER));
     totalXp += Math.max(1, Math.round(baseXp * Math.max(0, Number(residenceModifiers.jobXpMult || 1))));
+    const drop = maybeAwardCrate(state, "jobComplete", now);
+    if (drop?.rarity && Object.prototype.hasOwnProperty.call(crateDrops, drop.rarity)) {
+      crateDrops[drop.rarity] += 1;
+    }
   }
 
   state.activeJobs = state.activeJobs.filter((job) => job.endsAt > now);
@@ -293,19 +310,31 @@ export function claimReadyJobs(state, now = Date.now()) {
 
   const levelsGained = awardXp(state, totalXp, now);
   pushLog(state, `Claimed ${readyJobs.length} job(s): +$${totalCash} and +${totalXp} XP.`, now);
+  const totalDrops = crateDrops.common + crateDrops.rare + crateDrops.epic + crateDrops.legendary;
+  if (totalDrops > 0) {
+    pushLog(
+      state,
+      `Crate drops: ${crateDrops.common} Common, ${crateDrops.rare} Rare, ${crateDrops.epic} Epic, ${crateDrops.legendary} Legendary.`,
+      now
+    );
+  }
 
   return {
     ok: true,
     count: readyJobs.length,
     totalCash,
     totalXp,
-    levelsGained
+    levelsGained,
+    crateDrops
   };
 }
 
 export function useInstantJobToken(state, activeJobId, now = Date.now()) {
-  const tokens = Math.max(0, Math.floor(Number(state?.rebirthShop?.instantJobTokens || 0)));
-  if (tokens < 1) {
+  if (!state.rebirthShop || typeof state.rebirthShop !== "object") {
+    state.rebirthShop = { instantJobTokens: 0 };
+  }
+  const totalTokens = getInstantJobTokenCount(state);
+  if (totalTokens < 1) {
     return {
       ok: false,
       message: "No instant job tokens available."
@@ -323,7 +352,13 @@ export function useInstantJobToken(state, activeJobId, now = Date.now()) {
 
   const [job] = jobs.splice(targetIndex, 1);
   state.activeJobs = jobs;
-  state.rebirthShop.instantJobTokens = tokens - 1;
+  const crateTokens = Math.max(0, Math.floor(Number(state?.instantTokens || 0)));
+  if (crateTokens > 0) {
+    state.instantTokens = crateTokens - 1;
+  } else {
+    const rebirthTokens = Math.max(0, Math.floor(Number(state?.rebirthShop?.instantJobTokens || 0)));
+    state.rebirthShop.instantJobTokens = Math.max(0, rebirthTokens - 1);
+  }
 
   const effects = getPlayerEffects(state, now);
   const residenceModifiers = getResidenceModifiers(state);
@@ -346,7 +381,11 @@ export function useInstantJobToken(state, activeJobId, now = Date.now()) {
   state.streak.windowEndsAt = now + effects.streakWindowMs;
 
   const levelsGained = awardXp(state, totalXp, now);
+  const drop = maybeAwardCrate(state, "jobComplete", now);
   pushLog(state, `Used token on ${job.name}: +$${totalCash}, +${totalXp} XP.`, now);
+  if (drop?.rarity) {
+    pushLog(state, `Token completion crate drop: ${drop.rarity}.`, now);
+  }
 
   return {
     ok: true,
@@ -354,6 +393,6 @@ export function useInstantJobToken(state, activeJobId, now = Date.now()) {
     totalCash,
     totalXp,
     levelsGained,
-    tokensLeft: state.rebirthShop.instantJobTokens
+    tokensLeft: getInstantJobTokenCount(state)
   };
 }

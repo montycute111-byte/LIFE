@@ -1,3 +1,4 @@
+import { getCrateBoostMultipliers } from "./crates.js";
 import { getResidenceModifiers } from "./realEstate.js";
 import { getRebirthRuntimeModifiers } from "./rebirth.js";
 
@@ -264,7 +265,11 @@ export function getTotalPassivePerSec(state) {
   const residenceModifiers = getResidenceModifiers(state);
   const businessIncomeMult = Math.max(0, Number(residenceModifiers.businessIncomeMult || 1));
   const rebirthModifiers = getRebirthRuntimeModifiers(state);
-  return total * businessIncomeMult * Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1));
+  const crateMultipliers = getCrateBoostMultipliers(state);
+  return total
+    * businessIncomeMult
+    * Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1))
+    * Math.max(0, Number(crateMultipliers.businessPayoutMultiplier || 1));
 }
 
 export function getPassiveIntervalSeconds(state) {

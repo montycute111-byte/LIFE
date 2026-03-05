@@ -1,7 +1,8 @@
+import { awardLevelUpCrates, createDefaultCratesInventory, ensureCratesState } from "./crates.js";
 import { createDefaultRealEstateState, ensureRealEstateState, getResidenceModifiers } from "./realEstate.js";
 import { createDefaultRebirthBonuses, createDefaultRebirthShop, ensureRebirthState } from "./rebirth.js";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 const DAILY_REWARD_MS = 24 * 60 * 60 * 1000;
 
@@ -27,6 +28,10 @@ export function createDefaultState(username, options = {}) {
     inventory: [],
     activeAbility: null,
     activeAbilities: [],
+    cratesInventory: createDefaultCratesInventory(),
+    crateHistory: [],
+    activeBoosts: [],
+    instantTokens: 0,
     rebirths: 0,
     rebirthPoints: 0,
     rebirthPointsSpent: 0,
@@ -96,6 +101,7 @@ export function migrateState(oldState, username) {
   }
   state.activeAbilities = activeAbilities;
   state.activeAbility = activeAbilities[0] || null;
+  ensureCratesState(state);
   ensureRebirthState(state);
   state.boosts = {
     ...fallback.boosts,
@@ -179,6 +185,7 @@ export function claimDailyReward(state, now = Date.now()) {
   state.stats.totalEarned += reward;
 
   const levelsGained = syncLevelProgress(state);
+  const cratesAwarded = awardLevelUpCrates(state, levelsGained, now);
   pushLog(state, `Claimed daily bonus: +$${reward} and +${xpGain} XP.`, now);
   if (levelsGained > 0) {
     pushLog(state, `Level up! You reached level ${state.level}.`, now);
@@ -188,7 +195,8 @@ export function claimDailyReward(state, now = Date.now()) {
     ok: true,
     reward,
     xpGain,
-    levelsGained
+    levelsGained,
+    cratesAwarded
   };
 }
 

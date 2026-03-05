@@ -8,6 +8,7 @@ import {
   getBusinessState,
   getUpgradeCost
 } from "./businesses.js";
+import { getInstantJobTokenCount, nowMs } from "./crates.js";
 import { xpRequiredForLevel } from "./gameState.js";
 import { JOBS } from "./jobs.js";
 import {
@@ -98,6 +99,7 @@ function renderGame(viewModel) {
           <button class="tab-btn ${activeTab === "dashboard" ? "active" : ""}" data-action="tab" data-tab="dashboard">Dashboard</button>
           <button class="tab-btn ${activeTab === "jobs" ? "active" : ""}" data-action="tab" data-tab="jobs">All Jobs</button>
           <button class="tab-btn ${activeTab === "businesses" ? "active" : ""}" data-action="tab" data-tab="businesses">Businesses</button>
+          <button class="tab-btn ${activeTab === "crates" ? "active" : ""}" data-action="tab" data-tab="crates">Crates</button>
           <button class="tab-btn ${activeTab === "rebirth" ? "active" : ""}" data-action="tab" data-tab="rebirth">Rebirth</button>
           <button class="tab-btn ${activeTab === "realestate" ? "active" : ""}" data-action="tab" data-tab="realestate">Real Estate</button>
           <button class="tab-btn ${activeTab === "store" ? "active" : ""}" data-action="tab" data-tab="store">Store</button>
@@ -106,12 +108,12 @@ function renderGame(viewModel) {
         </div>
       </section>
 
-      ${renderActiveTab(state, effects, now)}
+      ${renderActiveTab(state, effects, now, viewModel)}
     </section>
   `;
 }
 
-function renderActiveTab(state, effects, now) {
+function renderActiveTab(state, effects, now, viewModel) {
   const activeTab = state?.settings?.activeTab || "dashboard";
   if (activeTab === "store") {
     return renderStoreTab(state);
@@ -127,6 +129,9 @@ function renderActiveTab(state, effects, now) {
   }
   if (activeTab === "businesses") {
     return renderBusinessesTab(state, now);
+  }
+  if (activeTab === "crates") {
+    return renderCratesTab(state, viewModel);
   }
   if (activeTab === "rebirth") {
     return renderRebirthTab(state);
@@ -144,7 +149,7 @@ function renderDashboardTab(state, effects, now) {
   const readyJobsCount = state.activeJobs.filter((job) => job.endsAt <= now).length;
   const activeAbilities = getActiveAbilities(state, now);
   const maxAbilitySlots = getMaxActiveAbilitySlots(state);
-  const instantTokens = Math.max(0, Number(state?.rebirthShop?.instantJobTokens || 0));
+  const instantTokens = getInstantJobTokenCount(state);
 
   return `
     <section class="grid two">
@@ -309,6 +314,101 @@ function renderRebirthTab(state) {
               </div>
             `;
           }).join("")}
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderCratesTab(state, viewModel) {
+  const inventory = state?.cratesInventory && typeof state.cratesInventory === "object"
+    ? state.cratesInventory
+    : { common: 0, rare: 0, epic: 0, legendary: 0 };
+  const history = Array.isArray(state?.crateHistory) ? state.crateHistory : [];
+  const activeBoosts = Array.isArray(state?.activeBoosts) ? state.activeBoosts : [];
+  const isOpening = Boolean(viewModel?.isOpeningCrate);
+  const stage = String(viewModel?.crateOpeningStage || "");
+  const openingRarity = String(viewModel?.crateOpeningRarity || "");
+  const result = viewModel?.lastCrateResult;
+  const now = nowMs();
+
+  return `
+    <section class="grid two">
+      <article class="card">
+        <h2>Mystery Crates</h2>
+        <div class="list">
+          ${["common", "rare", "epic", "legendary"].map((rarity) => `
+            <div class="item-row">
+              <div class="row-head">
+                <strong>${rarity[0].toUpperCase()}${rarity.slice(1)} Crate</strong>
+                <span class="rarity-pill ${rarityForCrate(rarity)}">x${formatNumber(inventory[rarity] || 0)}</span>
+              </div>
+              <button
+                class="btn secondary"
+                data-action="open-crate"
+                data-rarity="${rarity}"
+                ${(isOpening || Number(inventory[rarity] || 0) < 1) ? "disabled" : ""}
+              >
+                Open
+              </button>
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="list compact-list">
+          <div class="job-row">
+            <div class="row-head">
+              <strong>Opening Status</strong>
+              <span class="badge ${isOpening ? "processing" : "delivered"}">${isOpening ? "Busy" : "Idle"}</span>
+            </div>
+            <div class="row-meta">${isOpening ? `${escapeHtml(stage)} ${escapeHtml(openingRarity ? `${openingRarity} crate` : "")}` : "Ready to open crates."}</div>
+          </div>
+          ${result
+            ? `
+              <div class="job-row">
+                <div class="row-head">
+                  <strong>Last Reward</strong>
+                  <span class="rarity-pill legendary">${escapeHtml(result.rarity || "").toUpperCase()}</span>
+                </div>
+                <div class="row-meta">${escapeHtml(result.description || "")}</div>
+              </div>
+            `
+            : ""}
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Crate History</h2>
+        <div class="list active-jobs-list">
+          ${history.length
+            ? history.map((entry) => `
+              <div class="job-row">
+                <div class="row-head">
+                  <strong>${escapeHtml((entry.rarity || "").toUpperCase())}</strong>
+                  <span class="badge delivered">${escapeHtml(entry.rewardType || "")}</span>
+                </div>
+                <div class="row-meta">${escapeHtml(entry.description || "")}</div>
+                <div class="row-meta">${new Date(Number(entry.timestamp || now)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
+              </div>
+            `).join("")
+            : '<p class="hint empty-state">No crates opened yet.</p>'}
+        </div>
+        <h2>Active Crate Boosts</h2>
+        <div class="list">
+          ${activeBoosts.length
+            ? activeBoosts.map((boost) => {
+              const remaining = Math.max(0, Number(boost.endsAt || 0) - now);
+              return `
+                <div class="job-row">
+                  <div class="row-head">
+                    <strong>${escapeHtml(boost.type || "BOOST")}</strong>
+                    <span class="rarity-pill epic">x${Number(boost.multiplier || 1).toFixed(2)}</span>
+                  </div>
+                  <div class="row-meta">Remaining: ${formatCountdown(remaining)}</div>
+                </div>
+              `;
+            }).join("")
+            : '<p class="hint empty-state">No active crate boosts.</p>'}
         </div>
       </article>
     </section>
@@ -703,6 +803,9 @@ function bindEvents(root, viewModel, handlers) {
   root.querySelectorAll("[data-action='activate-item']").forEach((button) => {
     button.addEventListener("click", () => handlers.onActivateInventoryItem(button.dataset.id));
   });
+  root.querySelectorAll("[data-action='open-crate']").forEach((button) => {
+    button.addEventListener("click", () => handlers.onOpenCrate(button.dataset.rarity));
+  });
   root.querySelectorAll("[data-action='buy-rebirth-upgrade']").forEach((button) => {
     button.addEventListener("click", () => handlers.onBuyRebirthUpgrade(button.dataset.id));
   });
@@ -750,6 +853,13 @@ function rarityForLevel(level) {
   if (level >= 4) return "epic";
   if (level >= 3) return "rare";
   if (level >= 2) return "uncommon";
+  return "common";
+}
+
+function rarityForCrate(rarity) {
+  if (rarity === "legendary") return "legendary";
+  if (rarity === "epic") return "epic";
+  if (rarity === "rare") return "rare";
   return "common";
 }
 

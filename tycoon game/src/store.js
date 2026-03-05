@@ -1,4 +1,5 @@
 import { pushLog, syncLevelProgress } from "./gameState.js";
+import { awardLevelUpCrates } from "./crates.js";
 import { getRebirthRuntimeModifiers } from "./rebirth.js";
 import { getResidenceModifiers } from "./realEstate.js";
 
@@ -274,6 +275,7 @@ export function getMaxActiveAbilitySlots(state) {
 export function awardXp(state, amount, now = Date.now()) {
   state.xp += amount;
   const levelsGained = syncLevelProgress(state);
+  awardLevelUpCrates(state, levelsGained, now);
   if (levelsGained > 0) {
     pushLog(state, `Level up! You reached level ${state.level}.`, now);
   }

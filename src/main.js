@@ -6,6 +6,7 @@ import {
   setBusinessBuyMultiplier,
   upgradeBusiness
 } from "./businesses.js";
+import { openCrate, pruneExpiredBoosts } from "./crates.js";
 import { claimDailyReward, createDefaultState, migrateState, updateLastLogin } from "./gameState.js";
 import { claimReadyJobs, refreshTimedState, startJobToFillSlots, useInstantJobToken } from "./jobs.js";
 import {
@@ -26,7 +27,12 @@ const viewModel = {
   state: null,
   authError: "",
   notice: "",
-  saveStatus: "Idle"
+  saveStatus: "Idle",
+  isOpeningCrate: false,
+  crateOpeningStage: "",
+  crateOpeningRarity: "",
+  lastCrateResult: null,
+  crateOpenTimers: []
 };
 
 boot();
@@ -115,6 +121,7 @@ function render() {
     onUseInstantToken: (jobId) => runGameAction((state) => useInstantJobToken(state, jobId), { preserveScroll: true }),
     onBuyStoreItem: (itemId) => runGameAction((state) => buyStoreItem(state, itemId)),
     onActivateInventoryItem: (itemId) => runGameAction((state) => activateInventoryItem(state, itemId)),
+    onOpenCrate: (rarity) => handleOpenCrate(rarity),
     onBuyRebirthUpgrade: (upgradeId) => runGameAction((state) => buyRebirthShopUpgrade(state, upgradeId), { preserveScroll: true }),
     onConfirmRebirth: () => handleRebirthConfirm(),
     onSetBusinessBuyMode: (mode) => runGameAction((state) => setBusinessBuyMultiplier(state, mode), { preserveNotice: true, preserveScroll: true }),
@@ -155,6 +162,7 @@ function handleGuest() {
 }
 
 function handleLogout() {
+  clearCrateOpenTimers();
   persist("Saved before logout");
   logout();
   viewModel.session = null;
@@ -162,12 +170,16 @@ function handleLogout() {
   viewModel.authError = "";
   viewModel.notice = "Logged out. Pick an account to continue.";
   viewModel.saveStatus = "Idle";
+  viewModel.isOpeningCrate = false;
+  viewModel.crateOpeningStage = "";
+  viewModel.crateOpeningRarity = "";
+  viewModel.lastCrateResult = null;
   render();
 }
 
 function runGameAction(action, options = {}) {
   if (!viewModel.state) {
-    return;
+    return null;
   }
 
   const scrollY = options.preserveScroll ? window.scrollY : null;
@@ -179,7 +191,7 @@ function runGameAction(action, options = {}) {
     if (scrollY !== null) {
       window.scrollTo(0, scrollY);
     }
-    return;
+    return result || null;
   }
 
   persist("Saved locally");
@@ -194,6 +206,7 @@ function runGameAction(action, options = {}) {
   if (scrollY !== null) {
     window.scrollTo(0, scrollY);
   }
+  return result || null;
 }
 
 function persist(label) {
@@ -215,7 +228,17 @@ function describeActionResult(result) {
     return `Daily reward claimed: +$${result.reward}.`;
   }
   if (typeof result.totalCash === "number" && typeof result.count === "number") {
+    const totalDrops = Number(result?.crateDrops?.common || 0)
+      + Number(result?.crateDrops?.rare || 0)
+      + Number(result?.crateDrops?.epic || 0)
+      + Number(result?.crateDrops?.legendary || 0);
+    if (totalDrops > 0) {
+      return `Claimed ${result.count} job(s) for $${result.totalCash}. Crates dropped: ${totalDrops}.`;
+    }
     return `Claimed ${result.count} job(s) for $${result.totalCash}.`;
+  }
+  if (result.rarity && result.rewardType) {
+    return `${result.rarity[0].toUpperCase()}${result.rarity.slice(1)} Crate: ${result.description}`;
   }
   if (result.order?.itemName) {
     return "Ordered!";
@@ -267,6 +290,7 @@ function applyTimedUpdates() {
     return;
   }
   const updates = refreshTimedState(viewModel.state);
+  pruneExpiredBoosts(viewModel.state);
   const passive = applyPassiveIncomeTick(viewModel.state);
   if (Number(passive?.earned || 0) > 0) {
     viewModel.notice = `Passive income: +$${Math.round(passive.earned).toLocaleString()}.`;
@@ -278,7 +302,7 @@ function applyTimedUpdates() {
 
 function setActiveTab(state, tabId) {
   const safeTab = String(tabId || "").trim();
-  const allowedTabs = new Set(["dashboard", "store", "orders", "inventory", "jobs", "businesses", "realestate", "rebirth"]);
+  const allowedTabs = new Set(["dashboard", "store", "orders", "inventory", "jobs", "businesses", "crates", "realestate", "rebirth"]);
   state.settings.activeTab = allowedTabs.has(safeTab) ? safeTab : "dashboard";
   return { ok: true };
 }
@@ -292,6 +316,53 @@ function handleRebirthConfirm() {
     return;
   }
   runGameAction((state) => performRebirth(state));
+}
+
+function handleOpenCrate(rarity) {
+  if (!viewModel.state || viewModel.isOpeningCrate) {
+    return;
+  }
+  const normalized = String(rarity || "").toLowerCase();
+  const available = Math.max(0, Number(viewModel.state?.cratesInventory?.[normalized] || 0));
+  if (available < 1) {
+    viewModel.notice = "No crates of that rarity available.";
+    render();
+    return;
+  }
+
+  clearCrateOpenTimers();
+  viewModel.isOpeningCrate = true;
+  viewModel.crateOpeningRarity = normalized;
+  viewModel.crateOpeningStage = "Opening...";
+  viewModel.lastCrateResult = null;
+  render();
+
+  const openingTimer = window.setTimeout(() => {
+    viewModel.crateOpeningStage = "Rolling...";
+    render();
+  }, 350);
+
+  const resolveTimer = window.setTimeout(() => {
+    const result = runGameAction((state) => openCrate(state, normalized), { preserveNotice: true, preserveScroll: true });
+    if (result?.ok) {
+      viewModel.lastCrateResult = result;
+      viewModel.notice = `${normalized[0].toUpperCase()}${normalized.slice(1)} Crate: ${result.description}`;
+    }
+    viewModel.isOpeningCrate = false;
+    viewModel.crateOpeningStage = "";
+    viewModel.crateOpeningRarity = "";
+    clearCrateOpenTimers();
+    render();
+  }, 950);
+
+  viewModel.crateOpenTimers = [openingTimer, resolveTimer];
+}
+
+function clearCrateOpenTimers() {
+  for (const timerId of viewModel.crateOpenTimers) {
+    window.clearTimeout(timerId);
+  }
+  viewModel.crateOpenTimers = [];
 }
 
 function formatOfflineEarningsNotice(amount, elapsedSeconds) {
