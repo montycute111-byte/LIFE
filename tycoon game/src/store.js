@@ -3,18 +3,24 @@ import { awardLevelUpCrates } from "./crates.js";
 import { getPowerItemMultipliers } from "./powerItems.js";
 import { trackQuestEvent } from "./quests/questEngine.js";
 import { getRebirthRuntimeModifiers } from "./rebirth.js";
-import { getResidenceModifiers } from "./realEstate.js";
 
 export const ABILITY_DURATION_MS = 21 * 60 * 60 * 1000;
 const ORDER_MIN_MS = 30 * 1000;
 const ORDER_MAX_MS = 3 * 60 * 1000;
 const TIME_WARP_INTERVAL_MS = 10 * 60 * 1000;
+const WARP_BEACON_INTERVAL_MS = 6 * 60 * 1000;
+const SINGULARITY_CORE_INTERVAL_MS = 3 * 60 * 1000;
 const JOB_SLOT_ITEM_ID = "job_slot_permit";
 const JOB_SLOT_BASE_COST = 1000;
 const JOB_SLOT_COST_GROWTH = 1.35;
 const ABILITY_SLOT_ITEM_ID = "ability_slot_permit";
 const ABILITY_SLOT_BASE_COST = 100000;
 const ABILITY_SLOT_COST_GROWTH = 1.55;
+const TIME_WARP_ITEM_INTERVALS = {
+  time_warp_chip: TIME_WARP_INTERVAL_MS,
+  warp_beacon: WARP_BEACON_INTERVAL_MS,
+  singularity_core: SINGULARITY_CORE_INTERVAL_MS
+};
 
 export const STORE_ITEMS = [
   {
@@ -55,6 +61,62 @@ export const STORE_ITEMS = [
     description: "Gives a 12% chance for each claimed job to pay double while active.",
     price: 1500,
     ability: "12% chance jobs pay double.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "executive_espresso",
+    name: "Executive Espresso",
+    description: "Supercharges your deal flow for bigger job payouts.",
+    price: 2800,
+    ability: "Earn 40% more money from jobs.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "chrono_gloves",
+    name: "Chrono Gloves",
+    description: "Compresses task time for faster job completions.",
+    price: 3200,
+    ability: "Jobs complete 30% faster.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "neural_notebook",
+    name: "Neural Notebook",
+    description: "Boosted pattern retention for massive XP growth.",
+    price: 3600,
+    ability: "Gain +90% XP from jobs.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "jackpot_router",
+    name: "Jackpot Router",
+    description: "Routes hot leads into high-value job outcomes.",
+    price: 4600,
+    ability: "Additional 18% chance jobs pay double.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "warp_beacon",
+    name: "Warp Beacon",
+    description: "Sends periodic completion pulses to active jobs.",
+    price: 6200,
+    ability: "Instantly finish one active job every 6 minutes.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "singularity_core",
+    name: "Singularity Core",
+    description: "High-energy core that rapidly closes active jobs.",
+    price: 11800,
+    ability: "Instantly finish one active job every 3 minutes.",
+    abilityDuration: "21 hours"
+  },
+  {
+    id: "ops_command_pass",
+    name: "Ops Command Pass",
+    description: "Temporary operations pass that adds one job slot.",
+    price: 7800,
+    ability: "+1 extra active job slot while active.",
     abilityDuration: "21 hours"
   },
   {
@@ -109,10 +171,8 @@ export function buyStoreItem(state, itemId, now = Date.now()) {
     };
   }
 
-  const residenceModifiers = getResidenceModifiers(state);
   const baseDeliveryDelay = randomInt(ORDER_MIN_MS, ORDER_MAX_MS);
-  const deliverySpeed = Math.max(0, Math.min(0.6, Number(residenceModifiers.deliverySpeed || 0)));
-  const deliveryDelay = Math.max(1, Math.round(baseDeliveryDelay * (1 - deliverySpeed)));
+  const deliveryDelay = Math.max(1, Math.round(baseDeliveryDelay));
   const orderedAt = now;
   const deliveryTime = now + deliveryDelay;
   const order = {
@@ -184,7 +244,7 @@ export function activateInventoryItem(state, itemId, now = Date.now()) {
     effect: catalogItem.ability,
     activatedAt: now,
     expiresAt: now + ABILITY_DURATION_MS,
-    nextInstantAt: catalogItem.id === "time_warp_chip" ? now + TIME_WARP_INTERVAL_MS : null
+    nextInstantAt: TIME_WARP_ITEM_INTERVALS[catalogItem.id] ? now + TIME_WARP_ITEM_INTERVALS[catalogItem.id] : null
   };
   state.activeAbilities = [...activeAbilities, newAbility];
   state.activeAbility = state.activeAbilities[0] || null;
@@ -244,23 +304,30 @@ export function getPlayerEffects(state, now = Date.now()) {
   const activeIds = new Set(activeAbilities.map((entry) => entry.itemId));
   const levelBonusSlots = Math.max(0, Math.floor(Number(state?.level || 1)) - 1);
   const purchasedSlotBonus = getJobSlotPermitCount(state);
-  const residenceModifiers = getResidenceModifiers(state);
   const rebirthModifiers = getRebirthRuntimeModifiers(state);
   const powerMultipliers = getPowerItemMultipliers(state, now);
 
   return {
-    payoutMultiplier: (1 + (focusBurstActive ? 0.35 : 0)) * (activeIds.has("golden_calculator") ? 1.25 : 1) * rebirthModifiers.jobIncomeMult,
-    xpMultiplier: activeIds.has("focus_headphones") ? 1.5 : 1,
-    durationMultiplier: (activeIds.has("energy_drink") ? 0.8 : 1) * rebirthModifiers.jobTimeMult,
+    payoutMultiplier: (1 + (focusBurstActive ? 0.35 : 0))
+      * (activeIds.has("golden_calculator") ? 1.25 : 1)
+      * (activeIds.has("executive_espresso") ? 1.4 : 1)
+      * rebirthModifiers.jobIncomeMult,
+    xpMultiplier: (activeIds.has("focus_headphones") ? 1.5 : 1)
+      * (activeIds.has("neural_notebook") ? 1.9 : 1),
+    durationMultiplier: (activeIds.has("energy_drink") ? 0.8 : 1)
+      * (activeIds.has("chrono_gloves") ? 0.7 : 1)
+      * rebirthModifiers.jobTimeMult,
     cooldownMultiplier: Math.max(0, Number(powerMultipliers.cooldownMult || 1)),
     streakWindowMs: 12 * 60 * 60 * 1000,
     maxActiveJobs: 3
       + levelBonusSlots
       + purchasedSlotBonus
-      + Math.max(0, Number(residenceModifiers.jobSlotsBonus || 0))
+      + (activeIds.has("ops_command_pass") ? 1 : 0)
       + Math.max(0, Number(rebirthModifiers.extraJobSlots || 0)),
     focusBurstActive,
-    luckyDoubleChance: (activeIds.has("lucky_coin") ? 0.12 : 0) + Math.max(0, Number(powerMultipliers.luckBonus || 0))
+    luckyDoubleChance: (activeIds.has("lucky_coin") ? 0.12 : 0)
+      + (activeIds.has("jackpot_router") ? 0.18 : 0)
+      + Math.max(0, Number(powerMultipliers.luckBonus || 0))
   };
 }
 
@@ -363,21 +430,24 @@ function expireAbilities(state, now) {
 }
 
 function processTimeWarpTicks(state, now) {
-  const active = getActiveAbilities(state, now).find((entry) => entry.itemId === "time_warp_chip");
-  if (!active) {
+  const warpAbilities = getActiveAbilities(state, now)
+    .filter((entry) => Number(TIME_WARP_ITEM_INTERVALS[entry.itemId] || 0) > 0);
+  if (warpAbilities.length < 1) {
     return;
   }
 
-  let nextTick = Number(active.nextInstantAt || 0);
-  if (nextTick <= 0) {
-    nextTick = now + TIME_WARP_INTERVAL_MS;
+  for (const active of warpAbilities) {
+    const intervalMs = Number(TIME_WARP_ITEM_INTERVALS[active.itemId] || TIME_WARP_INTERVAL_MS);
+    let nextTick = Number(active.nextInstantAt || 0);
+    if (nextTick <= 0) {
+      nextTick = now + intervalMs;
+    }
+    while (nextTick <= now) {
+      instantlyFinishOneJob(state, now);
+      nextTick += intervalMs;
+    }
+    active.nextInstantAt = nextTick;
   }
-
-  while (nextTick <= now) {
-    instantlyFinishOneJob(state, now);
-    nextTick += TIME_WARP_INTERVAL_MS;
-  }
-  active.nextInstantAt = nextTick;
 }
 
 function instantlyFinishOneJob(state, now) {

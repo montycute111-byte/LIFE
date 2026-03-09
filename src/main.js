@@ -28,7 +28,6 @@ import {
   ensureRebirthState,
   performRebirth
 } from "./rebirth.js";
-import { buyResidence, moveInResidence, moveOutResidence, upgradeActiveResidence } from "./realEstate.js";
 import { claimQuest, ensureDailyQuests, trackQuestEvent } from "./quests/questEngine.js";
 import { loadUserState, saveUserState } from "./storage.js";
 import { activateInventoryItem, buyStoreItem } from "./store.js";
@@ -201,10 +200,6 @@ function render() {
     onUpgradeBusiness: (businessId) => runGameAction((state) => upgradeBusiness(state, businessId), { preserveScroll: true }),
     onPayBusinessUpkeep: (businessId) => runGameAction((state) => payBusinessUpkeep(state, businessId), { preserveScroll: true }),
     onClaimQuest: (questId) => runGameAction((state) => claimQuest(state, questId), { preserveScroll: true }),
-    onBuyResidence: (residenceId) => runGameAction((state) => buyResidence(state, residenceId), { preserveScroll: true }),
-    onMoveInResidence: (residenceId) => runGameAction((state) => moveInResidence(state, residenceId), { preserveScroll: true }),
-    onMoveOutResidence: () => runGameAction((state) => moveOutResidence(state), { preserveScroll: true }),
-    onUpgradeResidence: () => runGameAction((state) => upgradeActiveResidence(state), { preserveScroll: true }),
     onSetTab: (tabId) => runGameAction((state) => setActiveTab(state, tabId), { preserveNotice: true }),
     onSetStoreTab: (tabId) => runGameAction((state) => setStoreSubTab(state, tabId), { preserveNotice: true, preserveScroll: true })
   });
@@ -380,18 +375,6 @@ function describeActionResult(result) {
   if (result.businessName && Number(result.upkeepPaid || 0) > 0) {
     return `${result.businessName} resumed (paid $${result.upkeepPaid.toLocaleString()} upkeep).`;
   }
-  if (result.residenceName && Number(result.newLevel || 0) > 0) {
-    return `${result.residenceName} upgraded to level ${result.newLevel}.`;
-  }
-  if (result.residenceName && result.movedIn) {
-    return `Moved into ${result.residenceName}.`;
-  }
-  if (result.residenceName) {
-    return `${result.residenceName} purchased.`;
-  }
-  if (result.movedOut) {
-    return "Moved out. No active residence.";
-  }
   if (result.job?.name) {
     if (typeof result.tokensLeft === "number") {
       return `${result.job.name} finished with token. Tokens left: ${result.tokensLeft}.`;
@@ -450,7 +433,7 @@ function setActiveTab(state, tabId) {
     state.settings.storeSubTab = "power";
     return { ok: true };
   }
-  const allowedTabs = new Set(["dashboard", "store", "orders", "inventory", "jobs", "businesses", "crates", "education", "quests", "realestate", "rebirth"]);
+  const allowedTabs = new Set(["dashboard", "store", "orders", "inventory", "jobs", "businesses", "crates", "education", "quests", "rebirth"]);
   state.settings.activeTab = allowedTabs.has(safeTab) ? safeTab : "dashboard";
   return { ok: true };
 }

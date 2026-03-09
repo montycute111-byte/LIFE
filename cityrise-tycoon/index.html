@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CityRise Tycoon</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <div class="resource-card">
+        <span class="label">Cash</span>
+        <strong id="cashValue">$0</strong>
+      </div>
+      <div class="resource-card">
+        <span class="label">Population</span>
+        <strong id="populationValue">0</strong>
+      </div>
+      <div class="resource-card">
+        <span class="label">Energy</span>
+        <strong id="energyValue">0 / 0</strong>
+        <div class="bar-wrap"><div id="energyBar" class="bar energy"></div></div>
+      </div>
+      <div class="resource-card">
+        <span class="label">Happiness</span>
+        <strong id="happinessValue">0%</strong>
+        <div class="bar-wrap"><div id="happinessBar" class="bar happiness"></div></div>
+      </div>
+      <div class="resource-card level-card">
+        <span class="label">City Level</span>
+        <strong id="levelValue">1</strong>
+        <small id="xpText">0 / 0 XP</small>
+        <div class="bar-wrap"><div id="xpBar" class="bar xp"></div></div>
+      </div>
+    </header>
+
+    <main class="content-grid">
+      <aside class="panel left-panel">
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>City Status</h2>
+          </div>
+          <div class="stats-list" id="cityStatsList"></div>
+        </section>
+
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>Active Boosts</h2>
+          </div>
+          <div id="boostList" class="boost-list"></div>
+        </section>
+
+        <section class="panel-section skyline-section">
+          <div class="panel-head">
+            <h2>City Preview</h2>
+          </div>
+          <div id="skyline" class="skyline"></div>
+        </section>
+
+        <section class="panel-section">
+          <button id="openStatsBtn" class="btn secondary full">Statistics</button>
+        </section>
+      </aside>
+
+      <section class="panel center-panel">
+        <div class="panel-head">
+          <h2>Buildings</h2>
+          <span id="nextUnlockText" class="subtle"></span>
+        </div>
+        <div id="buildingGrid" class="building-grid"></div>
+      </section>
+
+      <aside class="panel right-panel">
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>Events</h2>
+            <span id="nextEventText" class="subtle"></span>
+          </div>
+          <div id="eventList" class="event-list"></div>
+        </section>
+
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>Quests</h2>
+          </div>
+          <div id="questList" class="quest-list"></div>
+        </section>
+
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>Achievements</h2>
+            <span id="achievementProgress" class="subtle"></span>
+          </div>
+          <div id="achievementList" class="achievement-list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="bottom-bar">
+      <button id="openDailyBtn" class="btn">Daily Reward</button>
+      <button id="openPrestigeBtn" class="btn accent">Prestige / Rebuild</button>
+      <button id="openSettingsBtn" class="btn secondary">Settings</button>
+    </footer>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <div id="dailyModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Daily Reward</h3>
+        <button class="icon-btn" data-close="dailyModal">✕</button>
+      </div>
+      <p id="dailyStatusText"></p>
+      <p id="dailyRewardPreview" class="subtle"></p>
+      <div class="modal-actions">
+        <button id="claimDailyBtn" class="btn accent full">Claim Reward</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="prestigeModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Prestige / Rebuild</h3>
+        <button class="icon-btn" data-close="prestigeModal">✕</button>
+      </div>
+      <p id="prestigeSummary"></p>
+      <div id="prestigePerkList" class="perk-list"></div>
+      <div class="modal-actions">
+        <button id="rebuildBtn" class="btn danger full">Rebuild City</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Settings</h3>
+        <button class="icon-btn" data-close="settingsModal">✕</button>
+      </div>
+      <div class="setting-row">
+        <label>
+          <input type="checkbox" id="animationsToggle">
+          Animations
+        </label>
+      </div>
+      <div class="setting-row">
+        <label>
+          <input type="checkbox" id="soundToggle">
+          Sound (placeholder)
+        </label>
+      </div>
+      <div class="setting-row transfer-row">
+        <button id="exportSaveBtn" class="btn secondary">Export Save</button>
+        <button id="importSaveBtn" class="btn secondary">Import Save</button>
+      </div>
+      <textarea id="saveTransferArea" rows="4" placeholder="Save code appears here for export, or paste code here to import"></textarea>
+      <div class="modal-actions">
+        <button id="resetSaveBtn" class="btn danger">Reset Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="statsModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Statistics</h3>
+        <button class="icon-btn" data-close="statsModal">✕</button>
+      </div>
+      <div id="statsContent" class="stats-grid"></div>
+    </div>
+  </div>
+
+  <div id="offlineModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Welcome Back</h3>
+        <button class="icon-btn" data-close="offlineModal">✕</button>
+      </div>
+      <p id="offlineText">While you were away, your city earned $0.</p>
+      <div class="modal-actions">
+        <button class="btn accent full" data-close="offlineModal">Awesome</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

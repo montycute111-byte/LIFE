@@ -1,16 +1,15 @@
 import { getCrateBoostMultipliers } from "./crates.js";
 import { getEducationMultipliers, getEducationProgram, isEducationCompleted } from "./education.js";
 import { getPowerItemMultipliers } from "./powerItems.js";
-import { getResidenceModifiers } from "./realEstate.js";
 import { getRebirthRuntimeModifiers } from "./rebirth.js";
 
 const OFFLINE_CAP_SECONDS = 12 * 60 * 60;
 const MAX_BUY_ITERATIONS = 500;
 const TIER_INTERVAL_MS = {
-  low: 15 * 60 * 1000,
-  mid: 15 * 60 * 1000,
-  high: 15 * 60 * 1000,
-  ultra: 15 * 60 * 1000
+  low: 10 * 60 * 1000,
+  mid: 10 * 60 * 1000,
+  high: 10 * 60 * 1000,
+  ultra: 10 * 60 * 1000
 };
 const TIER_UPKEEP_RATE = {
   low: 0.05,
@@ -336,7 +335,7 @@ export function getUpgradeCost(definition, level, state = null, now = Date.now()
 export function getBusinessIncomePerSec(definition, businessState) {
   const revenue = getBusinessRevenuePerCycle(definition, businessState);
   const upkeep = getBusinessUpkeepForRevenue(definition, businessState, revenue);
-  const intervalSeconds = Math.max(1, Math.floor(Number(businessState?.payoutIntervalMs || TIER_INTERVAL_MS.mid) / 1000));
+  const intervalSeconds = Math.max(0.001, Number(businessState?.payoutIntervalMs || TIER_INTERVAL_MS.mid) / 1000);
   const netPerCycle = Math.max(0, revenue - upkeep);
   return netPerCycle / intervalSeconds;
 }
@@ -354,7 +353,7 @@ export function getTotalPassivePerSec(state, now = Date.now()) {
     const scaledRevenue = Math.max(0, Math.round(revenue * payoutMult));
     const upkeep = getBusinessUpkeepForRevenue(definition, businessState, scaledRevenue);
     const netPerCycle = Math.max(0, scaledRevenue - upkeep);
-    const intervalSeconds = Math.max(1, Math.floor(businessState.payoutIntervalMs / 1000));
+    const intervalSeconds = Math.max(0.001, Number(businessState.payoutIntervalMs || TIER_INTERVAL_MS.mid) / 1000);
     total += netPerCycle / intervalSeconds;
   }
   return total;
@@ -362,7 +361,7 @@ export function getTotalPassivePerSec(state, now = Date.now()) {
 
 export function getPassiveIntervalSeconds(state) {
   ensureBusinessesState(state);
-  return Math.floor(TIER_INTERVAL_MS.low / 1000);
+  return TIER_INTERVAL_MS.low / 1000;
 }
 
 export function getPassiveCycleProgress(state, now = Date.now()) {
@@ -374,7 +373,7 @@ export function getPassiveCycleProgress(state, now = Date.now()) {
   return {
     progress,
     remainingMs,
-    intervalSeconds: Math.floor(TIER_INTERVAL_MS.low / 1000)
+    intervalSeconds: TIER_INTERVAL_MS.low / 1000
   };
 }
 
@@ -599,7 +598,7 @@ export function applyPassiveIncomeTick(state, now = Date.now()) {
     earned: result.earned,
     elapsedSeconds: result.elapsedSeconds,
     totalPerSec: getTotalPassivePerSec(state, now),
-    intervalSeconds: Math.floor(TIER_INTERVAL_MS.low / 1000),
+    intervalSeconds: TIER_INTERVAL_MS.low / 1000,
     cycles: result.cycles
   };
 }
@@ -771,13 +770,11 @@ function getBusinessUpkeepForRevenue(definition, businessState, revenuePerCycle)
 }
 
 function getBusinessPayoutMultiplier(state, now = Date.now()) {
-  const residenceModifiers = getResidenceModifiers(state);
   const rebirthModifiers = getRebirthRuntimeModifiers(state);
   const crateMultipliers = getCrateBoostMultipliers(state);
   const educationMultipliers = getEducationMultipliers(state);
   const powerMultipliers = getPowerItemMultipliers(state, now);
-  return Math.max(0, Number(residenceModifiers.businessIncomeMult || 1))
-    * Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1))
+  return Math.max(0, Number(rebirthModifiers.businessIncomeMult || 1))
     * Math.max(0, Number(crateMultipliers.businessPayoutMultiplier || 1))
     * Math.max(0, Number(educationMultipliers.businessMultiplier || 1))
     * Math.max(0, Number(powerMultipliers.bizPayoutMult || 1));
@@ -825,14 +822,14 @@ function applyTierSoftcap(multiplier, tier) {
 }
 
 function getTier(definition) {
-  const unlockLevel = Math.max(1, Number(definition?.unlockLevel || 1));
-  if (unlockLevel < 25) {
+  const baseCost = Math.max(0, Number(definition?.baseCost || 0));
+  if (baseCost < 10_000) {
     return "low";
   }
-  if (unlockLevel < 80) {
+  if (baseCost < 1_000_000_000) {
     return "mid";
   }
-  if (unlockLevel < 160) {
+  if (baseCost < 100_000_000_000_000) {
     return "high";
   }
   return "ultra";

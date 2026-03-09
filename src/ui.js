@@ -19,14 +19,6 @@ import {
   POWER_ITEMS_UNLOCK_LEVEL
 } from "./powerItems.js";
 import {
-  RESIDENCE_DEFS,
-  formatResidencePerk,
-  getResidenceDef,
-  getResidencePerkValue,
-  getResidenceState,
-  getResidenceUpgradeCost
-} from "./realEstate.js";
-import {
   REBIRTH_UNLOCK_LEVEL,
   REBIRTH_UNLOCK_MONEY,
   getProjectedRebirthAward,
@@ -115,7 +107,6 @@ function renderGame(viewModel) {
           <button class="tab-btn ${activeTab === "education" ? "active" : ""}" data-action="tab" data-tab="education">Education</button>
           <button class="tab-btn ${activeTab === "quests" ? "active" : ""}" data-action="tab" data-tab="quests">Quests</button>
           <button class="tab-btn ${activeTab === "rebirth" ? "active" : ""}" data-action="tab" data-tab="rebirth">Rebirth</button>
-          <button class="tab-btn ${activeTab === "realestate" ? "active" : ""}" data-action="tab" data-tab="realestate">Real Estate</button>
           <button class="tab-btn ${activeTab === "store" || activeTab === "poweritems" ? "active" : ""}" data-action="tab" data-tab="store">Store</button>
           <button class="tab-btn ${activeTab === "orders" ? "active" : ""}" data-action="tab" data-tab="orders">Track Orders</button>
           <button class="tab-btn ${activeTab === "inventory" ? "active" : ""}" data-action="tab" data-tab="inventory">Inventory</button>
@@ -182,9 +173,6 @@ function renderActiveTab(state, effects, now, viewModel) {
   }
   if (activeTab === "rebirth") {
     return renderRebirthTab(state);
-  }
-  if (activeTab === "realestate") {
-    return renderRealEstateTab(state);
   }
   return renderDashboardTab(state, effects, now);
 }
@@ -853,9 +841,10 @@ function renderBusinessesTab(state, now) {
           </div>
           <div class="business-stat-chip">
             <span>Payout interval</span>
-            <strong>Every 15 minutes</strong>
+            <strong>Every 10 minutes</strong>
           </div>
         </div>
+        <p class="hint">All businesses pay out every 10 minutes.</p>
       </article>
 
       <article class="card">
@@ -890,6 +879,7 @@ function renderBusinessesTab(state, now) {
             if (educationLocked) {
               lockNotes.push(`Requires ${getEducationRequirementName(definition.educationRequired)}`);
             }
+            lockNotes.push(`Pays every ${formatBusinessInterval(intervalMs)}`);
 
             return `
               <div class="item-row business-card ${locked ? "business-tile locked" : "business-tile"}">
@@ -905,9 +895,9 @@ function renderBusinessesTab(state, now) {
                   `
                   : `
                     <div class="row-meta">Qty ${formatNumber(businessState.qty)} • Lvl ${formatNumber(businessState.level)} • Payout $${formatNumber(payoutPerCycle)}/cycle</div>
-                    <div class="row-meta">Tier: ${escapeHtml(String(businessState.tier || "").toUpperCase())} • Interval: ${formatCountdown(intervalMs)} • Upkeep: ${upkeepRateText}</div>
+                    <div class="row-meta">Tier: ${escapeHtml(String(businessState.tier || "").toUpperCase())} • Pays every ${formatBusinessInterval(intervalMs)} • Upkeep: ${upkeepRateText}</div>
                     <div class="progress-wrap"><div class="progress-bar" style="width: ${(hasUnits && !businessState.paused ? cycle.progress : 0) * 100}%"></div></div>
-                    <div class="row-meta">${hasUnits ? (businessState.paused ? `Paused: pay $${formatNumber(nextUpkeepCost)} upkeep to resume` : `Next payout ${formatCountdown(cycle.remainingMs)}`) : "No units owned yet."}</div>
+                    <div class="row-meta">${hasUnits ? (businessState.paused ? `Paused: pay $${formatNumber(nextUpkeepCost)} upkeep to resume` : `Next payout in ${formatBusinessInterval(cycle.remainingMs)}`) : "No units owned yet."}</div>
                     <div class="row-meta">Next cost $${formatNumber(plannedCost)}</div>
                     <div class="top-actions">
                       <button class="btn" data-action="buy-business" data-id="${definition.id}" ${preview.qty < 1 ? "disabled" : ""}>${buyButtonLabel}</button>
@@ -919,89 +909,6 @@ function renderBusinessesTab(state, now) {
             `;
           }).join("")
             : '<p class="hint empty-state">No businesses in this category.</p>'}
-        </div>
-      </article>
-    </section>
-  `;
-}
-
-function renderRealEstateTab(state) {
-  const activeResidenceId = state?.realEstate?.activeResidenceId || null;
-  const activeDef = activeResidenceId ? getResidenceDef(activeResidenceId) : null;
-  const activeState = activeDef ? getResidenceState(state, activeDef.id) : { owned: false, upgradeLevel: 0 };
-  const activePerkValue = activeDef ? getResidencePerkValue(activeDef, activeState.upgradeLevel) : 0;
-  const activePerkLabel = activeDef ? formatResidencePerk(activeDef, activePerkValue) : "No active residence.";
-  const nextUpgradeCost = activeDef ? getResidenceUpgradeCost(activeDef, activeState.upgradeLevel) : 0;
-  const canUpgradeActive = Boolean(
-    activeDef
-    && activeState.upgradeLevel < activeDef.maxUpgrade
-    && Number(state.money || 0) >= nextUpgradeCost
-  );
-
-  return `
-    <section class="section-stack">
-      <article class="card">
-        <h2>Real Estate</h2>
-        <div class="list compact-list">
-          <div class="job-row">
-            <div class="row-head">
-              <strong>Current Residence</strong>
-              <span class="rarity-pill ${activeDef ? "legendary" : "common"}">${activeDef ? activeDef.name : "None"}</span>
-            </div>
-            <div class="row-meta">${activePerkLabel}</div>
-            ${activeDef
-              ? `
-                <div class="row-meta">Upgrade Level: ${activeState.upgradeLevel} / ${activeDef.maxUpgrade}</div>
-                <div class="row-meta">${activeState.upgradeLevel >= activeDef.maxUpgrade ? "Max upgrade reached." : `Next upgrade: $${formatNumber(nextUpgradeCost)}`}</div>
-                <div class="top-actions">
-                  <button class="btn secondary" data-action="upgrade-residence" ${canUpgradeActive ? "" : "disabled"}>Upgrade</button>
-                  <button class="btn tertiary" data-action="moveout-residence">Move Out</button>
-                </div>
-              `
-              : `
-                <div class="row-meta">Move into an owned residence to activate a perk.</div>
-                <div class="top-actions">
-                  <button class="btn tertiary" data-action="moveout-residence" disabled>Move Out</button>
-                </div>
-              `}
-          </div>
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="list">
-          ${RESIDENCE_DEFS.map((definition) => {
-            const residenceState = getResidenceState(state, definition.id);
-            const locked = state.level < definition.unlockLevel;
-            const isOwned = residenceState.owned;
-            const isActive = activeResidenceId === definition.id;
-            const perkValue = getResidencePerkValue(definition, residenceState.upgradeLevel);
-            const perkLabel = formatResidencePerk(definition, perkValue);
-
-            return `
-              <div class="item-row ${locked ? "business-tile locked" : ""}">
-                <div class="row-head">
-                  <strong>${escapeHtml(definition.name)}</strong>
-                  ${isActive
-                    ? '<span class="badge delivered">active</span>'
-                    : (isOwned
-                        ? '<span class="rarity-pill uncommon">Owned</span>'
-                        : `<span class="rarity-pill ${locked ? "common" : "rare"}">$${formatNumber(definition.basePrice)}</span>`)}
-                </div>
-                <div class="row-meta">${escapeHtml(definition.description || "")}</div>
-                <div class="row-meta">Perk: ${escapeHtml(perkLabel)}</div>
-                ${locked
-                  ? `<div class="row-meta">Unlocks at Level ${definition.unlockLevel}</div>`
-                  : `
-                    <div class="row-meta">Upgrade Level: ${residenceState.upgradeLevel} / ${definition.maxUpgrade}</div>
-                    <div class="top-actions">
-                      ${!isOwned ? `<button class="btn" data-action="buy-residence" data-id="${definition.id}" ${Number(state.money || 0) >= definition.basePrice ? "" : "disabled"}>Buy</button>` : ""}
-                      ${isOwned && !isActive ? `<button class="btn secondary" data-action="movein-residence" data-id="${definition.id}">Move In</button>` : ""}
-                    </div>
-                  `}
-              </div>
-            `;
-          }).join("")}
         </div>
       </article>
     </section>
@@ -1158,18 +1065,6 @@ function bindEvents(root, viewModel, handlers) {
   root.querySelectorAll("[data-action='pay-business-upkeep']").forEach((button) => {
     button.addEventListener("click", () => handlers.onPayBusinessUpkeep(button.dataset.id));
   });
-  root.querySelectorAll("[data-action='buy-residence']").forEach((button) => {
-    button.addEventListener("click", () => handlers.onBuyResidence(button.dataset.id));
-  });
-  root.querySelectorAll("[data-action='movein-residence']").forEach((button) => {
-    button.addEventListener("click", () => handlers.onMoveInResidence(button.dataset.id));
-  });
-  root.querySelectorAll("[data-action='moveout-residence']").forEach((button) => {
-    button.addEventListener("click", () => handlers.onMoveOutResidence());
-  });
-  root.querySelectorAll("[data-action='upgrade-residence']").forEach((button) => {
-    button.addEventListener("click", () => handlers.onUpgradeResidence());
-  });
   root.querySelectorAll("[data-action='buy-store-item']").forEach((button) => {
     button.addEventListener("click", () => handlers.onBuyStoreItem(button.dataset.id));
   });
@@ -1244,8 +1139,40 @@ function formatCountdown(ms) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatBusinessInterval(ms) {
+  const safeMs = Math.max(0, Number(ms || 0));
+  if (safeMs < 1000) {
+    return `${(safeMs / 1000).toFixed(2)}s`;
+  }
+  return formatCountdown(safeMs);
+}
+
 function formatNumber(value) {
-  return Math.round(value).toLocaleString();
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return "0";
+  }
+
+  const abs = Math.abs(num);
+  if (abs < 1000) {
+    return Math.round(num).toLocaleString();
+  }
+
+  const units = [
+    { value: 1e15, suffix: "q" },
+    { value: 1e12, suffix: "t" },
+    { value: 1e9, suffix: "b" },
+    { value: 1e6, suffix: "m" },
+    { value: 1e3, suffix: "k" }
+  ];
+  const unit = units.find((entry) => abs >= entry.value) || units[units.length - 1];
+  const scaled = num / unit.value;
+  const decimals = Math.abs(scaled) >= 100 ? 0 : (Math.abs(scaled) >= 10 ? 1 : 2);
+  const compact = scaled
+    .toFixed(decimals)
+    .replace(/\.0+$/, "")
+    .replace(/(\.\d*[1-9])0+$/, "$1");
+  return `${compact}${unit.suffix}`;
 }
 
 function formatLogLine(entry) {

@@ -184,10 +184,6 @@ export function performRebirth(state, now = Date.now()) {
     lastPassiveTickAt: now,
     owned: {}
   };
-  state.realEstate = {
-    owned: {},
-    activeResidenceId: null
-  };
   state.orders = [];
   state.inventory = [];
   state.activeAbility = null;

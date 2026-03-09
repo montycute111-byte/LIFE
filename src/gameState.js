@@ -1,7 +1,6 @@
 import { awardLevelUpCrates, createDefaultCratesInventory, ensureCratesState } from "./crates.js";
 import { createDefaultEducationPerks, createDefaultEducationState, ensureEducationState } from "./education.js";
 import { getPowerItemMultipliers, POWER_ITEMS_UNLOCK_LEVEL } from "./powerItems.js";
-import { createDefaultRealEstateState, ensureRealEstateState, getResidenceModifiers } from "./realEstate.js";
 import { createDefaultRebirthBonuses, createDefaultRebirthShop, ensureRebirthState } from "./rebirth.js";
 
 export const SCHEMA_VERSION = 9;
@@ -25,7 +24,6 @@ export function createDefaultState(username, options = {}) {
     ownedItems: {},
     cooldowns: {},
     businesses: createDefaultBusinessesState(now),
-    realEstate: createDefaultRealEstateState(),
     orders: [],
     inventory: [],
     activeAbility: null,
@@ -103,8 +101,7 @@ export function migrateState(oldState, username) {
   state.ownedItems = state.ownedItems && typeof state.ownedItems === "object" ? state.ownedItems : {};
   state.cooldowns = state.cooldowns && typeof state.cooldowns === "object" ? state.cooldowns : {};
   state.businesses = normalizeBusinessesState(state.businesses, fallback.businesses, Date.now());
-  state.realEstate = normalizeRealEstateState(state.realEstate, fallback.realEstate);
-  ensureRealEstateState(state);
+  delete state.realEstate;
   state.orders = Array.isArray(state.orders) ? state.orders : [];
   state.inventory = Array.isArray(state.inventory) ? state.inventory : [];
   const legacyActiveAbility = state.activeAbility && typeof state.activeAbility === "object" ? state.activeAbility : null;
@@ -212,11 +209,8 @@ export function claimDailyReward(state, now = Date.now()) {
   state.money += reward;
   state.xp += xpGain;
   state.daily.lastClaimAt = now;
-  const residenceModifiers = getResidenceModifiers(state);
-  const cooldownReduction = Math.max(0, Math.min(3 * 60 * 60 * 1000, Number(residenceModifiers.dailyCooldownReduceMs || 0)));
-  const effectiveCooldown = Math.max(1, DAILY_REWARD_MS - cooldownReduction);
   const powerMultipliers = getPowerItemMultipliers(state, now);
-  const finalCooldownMs = Math.max(1, Math.round(effectiveCooldown * Math.max(0, Number(powerMultipliers.cooldownMult || 1))));
+  const finalCooldownMs = Math.max(1, Math.round(DAILY_REWARD_MS * Math.max(0, Number(powerMultipliers.cooldownMult || 1))));
   state.daily.nextClaimAt = now + finalCooldownMs;
   state.stats.totalEarned += reward;
 
@@ -294,18 +288,6 @@ function normalizeBusinessesState(value, fallback, now) {
       ? value.lastPassiveTickAt
       : base.lastPassiveTickAt,
     owned: normalizedOwned
-  };
-}
-
-function normalizeRealEstateState(value, fallback) {
-  const base = fallback && typeof fallback === "object" ? fallback : createDefaultRealEstateState();
-  if (!value || typeof value !== "object") {
-    return base;
-  }
-
-  return {
-    owned: value.owned && typeof value.owned === "object" ? value.owned : {},
-    activeResidenceId: typeof value.activeResidenceId === "string" ? value.activeResidenceId : null
   };
 }
 

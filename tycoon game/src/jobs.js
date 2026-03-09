@@ -3,7 +3,6 @@ import { getEducationMultipliers, getEducationProgram, isEducationCompleted } fr
 import { pushLog } from "./gameState.js";
 import { getPowerItemMultipliers } from "./powerItems.js";
 import { trackQuestEvent } from "./quests/questEngine.js";
-import { getResidenceModifiers } from "./realEstate.js";
 import { awardXp, getPlayerEffects, processStoreTimers } from "./store.js";
 
 const JOB_XP_CLAIM_MULTIPLIER = 0.35;
@@ -215,6 +214,210 @@ export const JOBS = [
     xp: 27200,
     levelRequired: 220,
     educationRequired: "college"
+  },
+  {
+    id: "core_apex_clearance_01",
+    name: "Core Apex Clearance 1",
+    durationMs: 6900 * 1000,
+    payout: 3200000,
+    xp: 30000,
+    levelRequired: 230
+  },
+  {
+    id: "core_apex_clearance_02",
+    name: "Core Apex Clearance 2",
+    durationMs: 7200 * 1000,
+    payout: 4200000,
+    xp: 34000,
+    levelRequired: 242
+  },
+  {
+    id: "core_apex_clearance_03",
+    name: "Core Apex Clearance 3",
+    durationMs: 7500 * 1000,
+    payout: 5600000,
+    xp: 39000,
+    levelRequired: 254
+  },
+  {
+    id: "core_apex_clearance_04",
+    name: "Core Apex Clearance 4",
+    durationMs: 7800 * 1000,
+    payout: 7400000,
+    xp: 45000,
+    levelRequired: 266
+  },
+  {
+    id: "core_apex_clearance_05",
+    name: "Core Apex Clearance 5",
+    durationMs: 8100 * 1000,
+    payout: 9800000,
+    xp: 52000,
+    levelRequired: 278
+  },
+  {
+    id: "core_apex_clearance_06",
+    name: "Core Apex Clearance 6",
+    durationMs: 8400 * 1000,
+    payout: 12800000,
+    xp: 60000,
+    levelRequired: 290
+  },
+  {
+    id: "core_apex_clearance_07",
+    name: "Core Apex Clearance 7",
+    durationMs: 8700 * 1000,
+    payout: 16800000,
+    xp: 69000,
+    levelRequired: 302
+  },
+  {
+    id: "core_apex_clearance_08",
+    name: "Core Apex Clearance 8",
+    durationMs: 9000 * 1000,
+    payout: 22000000,
+    xp: 79000,
+    levelRequired: 314
+  },
+  {
+    id: "core_apex_clearance_09",
+    name: "Core Apex Clearance 9",
+    durationMs: 9300 * 1000,
+    payout: 28500000,
+    xp: 90000,
+    levelRequired: 326
+  },
+  {
+    id: "core_apex_clearance_10",
+    name: "Core Apex Clearance 10",
+    durationMs: 9600 * 1000,
+    payout: 36500000,
+    xp: 102000,
+    levelRequired: 338
+  },
+  {
+    id: "core_apex_clearance_11",
+    name: "Core Apex Clearance 11",
+    durationMs: 9900 * 1000,
+    payout: 46500000,
+    xp: 115000,
+    levelRequired: 350
+  },
+  {
+    id: "core_apex_clearance_12",
+    name: "Core Apex Clearance 12",
+    durationMs: 10200 * 1000,
+    payout: 59000000,
+    xp: 129000,
+    levelRequired: 362
+  },
+  {
+    id: "hs_master_finance_01",
+    name: "HS Master Finance Lab 1",
+    durationMs: 9000 * 1000,
+    payout: 6200000,
+    xp: 46000,
+    levelRequired: 260,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_02",
+    name: "HS Master Finance Lab 2",
+    durationMs: 9300 * 1000,
+    payout: 8100000,
+    xp: 52000,
+    levelRequired: 275,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_03",
+    name: "HS Master Finance Lab 3",
+    durationMs: 9600 * 1000,
+    payout: 10600000,
+    xp: 59000,
+    levelRequired: 290,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_04",
+    name: "HS Master Finance Lab 4",
+    durationMs: 9900 * 1000,
+    payout: 13800000,
+    xp: 67000,
+    levelRequired: 305,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_05",
+    name: "HS Master Finance Lab 5",
+    durationMs: 10200 * 1000,
+    payout: 17900000,
+    xp: 76000,
+    levelRequired: 320,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_06",
+    name: "HS Master Finance Lab 6",
+    durationMs: 10500 * 1000,
+    payout: 23100000,
+    xp: 86000,
+    levelRequired: 335,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_07",
+    name: "HS Master Finance Lab 7",
+    durationMs: 10800 * 1000,
+    payout: 29600000,
+    xp: 97000,
+    levelRequired: 350,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_08",
+    name: "HS Master Finance Lab 8",
+    durationMs: 11100 * 1000,
+    payout: 37800000,
+    xp: 109000,
+    levelRequired: 365,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_09",
+    name: "HS Master Finance Lab 9",
+    durationMs: 11400 * 1000,
+    payout: 48000000,
+    xp: 122000,
+    levelRequired: 380,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_10",
+    name: "HS Master Finance Lab 10",
+    durationMs: 11700 * 1000,
+    payout: 60700000,
+    xp: 136000,
+    levelRequired: 395,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_11",
+    name: "HS Master Finance Lab 11",
+    durationMs: 12000 * 1000,
+    payout: 76500000,
+    xp: 151000,
+    levelRequired: 410,
+    educationRequired: "hs"
+  },
+  {
+    id: "hs_master_finance_12",
+    name: "HS Master Finance Lab 12",
+    durationMs: 12300 * 1000,
+    payout: 96000000,
+    xp: 167000,
+    levelRequired: 425,
+    educationRequired: "hs"
   },
   {
     id: "apex_treasury_01",
@@ -1071,7 +1274,6 @@ export function claimReadyJobs(state, now = Date.now()) {
   }
 
   const effects = getPlayerEffects(state, now);
-  const residenceModifiers = getResidenceModifiers(state);
   const educationMultipliers = getEducationMultipliers(state);
   const powerMultipliers = getPowerItemMultipliers(state, now);
   const crateDrops = {
@@ -1088,14 +1290,13 @@ export function claimReadyJobs(state, now = Date.now()) {
     const baseCash = luckyDouble ? job.payout * 2 : job.payout;
     totalCash += Math.round(
       baseCash
-      * Math.max(0, Number(residenceModifiers.jobPayoutMult || 1))
       // Education is applied at payout finalization only.
       * Math.max(0, Number(educationMultipliers.jobMultiplier || 1))
       * Math.max(0, Number(powerMultipliers.jobPayoutMult || 1))
     );
 
     const baseXp = Math.max(1, Math.round(job.xp * JOB_XP_CLAIM_MULTIPLIER));
-    totalXp += Math.max(1, Math.round(baseXp * Math.max(0, Number(residenceModifiers.jobXpMult || 1))));
+    totalXp += Math.max(1, Math.round(baseXp));
     const drop = maybeAwardCrate(state, "jobComplete", now);
     if (drop?.rarity && Object.prototype.hasOwnProperty.call(crateDrops, drop.rarity)) {
       crateDrops[drop.rarity] += 1;
@@ -1170,19 +1371,17 @@ export function useInstantJobToken(state, activeJobId, now = Date.now()) {
   }
 
   const effects = getPlayerEffects(state, now);
-  const residenceModifiers = getResidenceModifiers(state);
   const educationMultipliers = getEducationMultipliers(state);
   const powerMultipliers = getPowerItemMultipliers(state, now);
   const luckyDouble = effects.luckyDoubleChance > 0 && Math.random() < effects.luckyDoubleChance;
   const baseCash = luckyDouble ? job.payout * 2 : job.payout;
   const totalCash = Math.round(
     baseCash
-    * Math.max(0, Number(residenceModifiers.jobPayoutMult || 1))
     * Math.max(0, Number(educationMultipliers.jobMultiplier || 1))
     * Math.max(0, Number(powerMultipliers.jobPayoutMult || 1))
   );
   const baseXp = Math.max(1, Math.round(job.xp * JOB_XP_CLAIM_MULTIPLIER));
-  const totalXp = Math.max(1, Math.round(baseXp * Math.max(0, Number(residenceModifiers.jobXpMult || 1))));
+  const totalXp = Math.max(1, Math.round(baseXp));
 
   state.money += totalCash;
   state.stats.jobsCompleted += 1;
